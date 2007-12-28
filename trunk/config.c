@@ -229,8 +229,13 @@ void read_config(struct list_head *token_list, hardware_t *hardware_description,
 				included_config_filename[CONFIG_PATH_LENGTH_MAX]='\0';
 
 				if ((config_file=fopen(included_config_filename, "r")) == NULL) {
-					fwprintf(stderr, L"nvram: include error in config file %s, line %d, file %ls: %s.\n", config_filename, token->line, filename_buffer, strerror(errno));
-					exit(EXIT_FAILURE);
+					fwprintf(stderr, L"nvram: (ignored) error opening include file %ls noted in config file %s, line %d: %s.\n", filename_buffer, config_filename, token->line, strerror(errno));
+
+					/* Next token is the line end. */
+					NEXT_TOKEN
+
+					/* Break switch. */
+					break;
 				}
 				strncpy(config_filename, included_config_filename, CONFIG_PATH_LENGTH_MAX);
 
