@@ -277,18 +277,15 @@ int main(int argc, char *argv[])
 	/* Initialize hardware description. */
 	hardware_description.type=HARDWARE_DESCRIPTION_STANDARD;
 
-	/* Skip the following step for "list" command. */
-	if (strcmp(argv[1], "list") != 0) {
-		/* Detect BIOS, system, and board info. */
-		if (dmi_detect(&hardware_description) == -1) {
-			fwprintf(stderr, L"nvram: hardware detection failed: %s.\n", strerror(errno));
-			exit(EXIT_FAILURE);
-		}
+	/* Detect BIOS, system, and board info. */
+	if (dmi_detect(&hardware_description) == -1) {
+		fwprintf(stderr, L"nvram: hardware detection failed: %s.\n", strerror(errno));
+		exit(EXIT_FAILURE);
 	}
 
 	/* Read configuration file(s). */
 	read_config(&token_list, &hardware_description, &nvram_mapping);
-
+	
 	/* Get mode from first parameter. */
 	if (argc < 2) {
 		fwprintf(stderr, USAGE);

@@ -45,29 +45,42 @@ wchar_t *commands[] = {
 
 
 #define NEXT_TOKEN \
-  			pos = pos->next; \
-				if (pos == token_list) { \
-					fwprintf(stderr, L"nvram: error in config file %s, line %d: incomplete statement.\n", config_filename, token->line);\
-					exit(EXIT_FAILURE); \
-				} \
-				token=list_entry(pos, token_t, list);
+ 	pos = pos->next; \
+	if (pos == token_list) { \
+		fwprintf(stderr, L"nvram: error in config file %s, line %d: incomplete statement.\n", config_filename, token->line);\
+		exit(EXIT_FAILURE); \
+	} \
+	token=list_entry(pos, token_t, list);
 
 #define INTEGER_TOKEN \
-				if (token_convert_integer(token) == -1) { \
-					fwprintf(stderr, L"nvram: error in config file %s, line %d: not a valid integer: %ls.\n", config_filename, token->line, token->data.string); \
-					exit(EXIT_FAILURE); \
-				}
+	if (token_convert_integer(token) == -1) { \
+		fwprintf(stderr, L"nvram: error in config file %s, line %d: not a valid integer: %ls.\n", config_filename, token->line, token->data.string); \
+		exit(EXIT_FAILURE); \
+	}
 
 #define EOL_TOKEN \
-				if (token->type != TOKEN_TYPE_EOL) { \
-					fwprintf(stderr, L"nvram: error in config file %s, line %d: additional parameter %s in statement.\n", config_filename, token->line, token->data.string); \
-				}
+	if (token->type != TOKEN_TYPE_EOL) { \
+		fwprintf(stderr, L"nvram: error in config file %s, line %d: additional parameter %s in statement.\n", config_filename, token->line, token->data.string); \
+	}
 
 #define NOT_EOL_TOKEN \
-				if (token->type == TOKEN_TYPE_EOL) { \
-					fwprintf(stderr, L"nvram: error in config file %s, line %d: incomplete statement.\n", config_filename, token->line);\
-					exit(EXIT_FAILURE); \
-				}
+	if (token->type == TOKEN_TYPE_EOL) { \
+		fwprintf(stderr, L"nvram: error in config file %s, line %d: incomplete statement.\n", config_filename, token->line);\
+		exit(EXIT_FAILURE); \
+	}
+
+#define REPLACE_ESCAPE(s) \
+	for (k=0; (k < strlen(s) && (j < CONFIG_PATH_LENGTH_MAX)); k++, j++) { \
+		if (mbtowc(&filename_buffer[j], &(s[k]), MB_CUR_MAX) == -1) { \
+			fwprintf(stderr, L"nvram: error in config file %s, line %d: invalid character sequence in config file name.\n", config_filename, token->line); \
+			exit(EXIT_FAILURE); \
+		} \
+	} \
+	j--;
+
+#define INVALID_ESCAPE \
+	fwprintf(stderr, L"nvram: error in config file %s, line %d: invalid escape sequence in config file name.\n", config_filename, token->line); \
+	exit(EXIT_FAILURE);
 
 /* Read config file. */
 void read_config(struct list_head *token_list, hardware_t *hardware_description, struct list_head *nvram_mapping)
@@ -76,10 +89,11 @@ void read_config(struct list_head *token_list, hardware_t *hardware_description,
 	char              config_filename[CONFIG_PATH_LENGTH_MAX+1];
 	wchar_t          *identifier;
 	char              included_config_filename[CONFIG_PATH_LENGTH_MAX+1];
+	wchar_t           filename_buffer[CONFIG_PATH_LENGTH_MAX+1];
 	map_field_t      *map_field;
 	int               nesting_level=0;
 	struct list_head *pos, *map_pos;
-	long              position, length, i;
+	long              position, length, i, j, k;
 	token_t          *token;
 	int               command_keyword;
 
@@ -125,14 +139,97 @@ void read_config(struct list_head *token_list, hardware_t *hardware_description,
 					exit(EXIT_FAILURE);
 				}
 
+				/* Replace special sequences by DMI strings. */
+				for (i=0, j=0; (i <= wcslen(token->data.string)) && (j < CONFIG_PATH_LENGTH_MAX); i++, j++) {
+					/* Check for escape char. */
+					if (token->data.string[i] == L'%') {
+						/* Escape char found. Get next char. */
+						i++;
+						switch (token->data.string[i]) {
+							case L'b':
+								i++;
+								switch (token->data.string[i]) {
+									case L'm':
+										/* Replace with BIOS vendor. */
+										REPLACE_ESCAPE(hardware_description->bios_vendor)
+										break;
+
+									case L'v':
+										/* Replace with BIOS version. */
+										REPLACE_ESCAPE(hardware_description->bios_version)
+										break;
+
+									case L'r':
+										/* Replace with BIOS release date. */
+										REPLACE_ESCAPE(hardware_description->bios_release_date)
+										break;
+									default:
+										INVALID_ESCAPE
+								}
+								break;
+
+							case L's':
+								i++;
+								switch (token->data.string[i]) {
+									case L'm':
+										/* Replace with system manufacturer. */
+										REPLACE_ESCAPE(hardware_description->system_manufacturer)
+										break;
+
+									case L'p':
+										/* Replace with system product code. */
+										REPLACE_ESCAPE(hardware_description->system_productcode)
+										break;
+
+									case L'v':
+										/* Replace with system version. */
+										REPLACE_ESCAPE(hardware_description->system_version)
+										break;
+									default:
+										INVALID_ESCAPE
+								}
+								break;
+
+							case L'm':
+								i++;
+								switch (token->data.string[i]) {
+									case L'm':
+										/* Replace with board manufacturer. */
+										REPLACE_ESCAPE(hardware_description->board_manufacturer)
+										break;
+
+									case L'p':
+										/* Replace with board product code. */
+										REPLACE_ESCAPE(hardware_description->board_productcode)
+										break;
+
+									case L'v':
+										/* Replace with board version. */
+										REPLACE_ESCAPE(hardware_description->board_version)
+										break;
+									default:
+										INVALID_ESCAPE
+								}
+								break;
+
+							default:
+								INVALID_ESCAPE
+						}
+					} else {
+						/* Single char. */
+						filename_buffer[j]=token->data.string[i];
+					}	
+				}
+
 				/* Open included config file. */
-				if (wcstombs(included_config_filename, token->data.string, CONFIG_PATH_LENGTH_MAX) == -1) {
+				if (wcstombs(included_config_filename, filename_buffer, CONFIG_PATH_LENGTH_MAX) == -1) {
 					fwprintf(stderr, L"nvram: error in config file %s, line %d: not a valid config file name.\n", config_filename, token->line);
 					exit(EXIT_FAILURE);
 				}
 				included_config_filename[CONFIG_PATH_LENGTH_MAX]='\0';
+
 				if ((config_file=fopen(included_config_filename, "r")) == NULL) {
-					fwprintf(stderr, L"nvram: include error in config file %s, line %d: %s.\n", config_filename, token->line, strerror(errno));
+					fwprintf(stderr, L"nvram: include error in config file %s, line %d, file %ls: %s.\n", config_filename, token->line, filename_buffer, strerror(errno));
 					exit(EXIT_FAILURE);
 				}
 				strncpy(config_filename, included_config_filename, CONFIG_PATH_LENGTH_MAX);
