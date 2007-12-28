@@ -1,5 +1,8 @@
 /*
  *   util.c -- Utility functions.
+ *
+ *   Copyleft (c) 2007, Jan Kandziora <nvram@kandziora-ing.de>
+ * 
  */
 
 #include <ctype.h>
@@ -7,6 +10,7 @@
 #include <stdlib.h>
 #include <wchar.h> 
 #include "util.h" 
+
 
 /* Compare a wide string against a multibyte string. */
 int wcsmbscmp(wchar_t *wcs, char *mbs)
@@ -75,4 +79,3 @@ unsigned char *convert_bytearray(unsigned char *dst, const char *src, size_t len
 	/* All ok. */
 	return dst;
 }
-
