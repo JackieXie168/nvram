@@ -22,6 +22,7 @@ map_field_t *map_field_new(void)
 	/* Initialize map field. */
 	INIT_LIST_HEAD(&map_field->list);
 	map_field->type=MAP_FIELD_TYPE_NULL;
+	map_field->name=NULL;
 
 	return map_field;
 }
