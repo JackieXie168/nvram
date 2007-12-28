@@ -15,6 +15,7 @@
 
 #include "list.h"
 #include "token.h"
+#include "map.h"
 #include "nvram_op.h"
 #include "util.h"
 
@@ -34,12 +35,14 @@ wchar_t *commands[] = {
 	L"hardware",
 	L"bytearray",
 	L"string",
+	L"bitfield",
 	(wchar_t *)NULL };
 
 #define COMMAND_KEYWORD_INCLUDE   0
 #define COMMAND_KEYWORD_HARDWARE  1
 #define COMMAND_KEYWORD_BYTEARRAY 2
 #define COMMAND_KEYWORD_STRING    3
+#define COMMAND_KEYWORD_BITFIELD  4
 
 
 /* Recognized hardware_descriptions. */
@@ -56,39 +59,49 @@ wchar_t *hardware_descriptions[] = {
 #define HARDWARE_DESCRIPTION_DS1685   3
 
 
+typedef struct {
+	int type;
+} hardware_t;
+
+
 #define NEXT_TOKEN \
   			pos = pos->next; \
-				token=list_entry(pos, token_t, list);
-
-#define ANY_TOKEN \
-  			pos = pos->next; \
 				if (pos == token_list) { \
-					fwprintf(stderr, L"nvram: syntax error in config file %s, line %d: Incomplete statement.\n", config_filename, token->line);\
+					fwprintf(stderr, L"nvram: error in config file %s, line %d: incomplete statement.\n", config_filename, token->line);\
 					exit(EXIT_FAILURE); \
 				} \
 				token=list_entry(pos, token_t, list);
 
 #define INTEGER_TOKEN \
 				if (token_convert_integer(token) == -1) { \
-					fwprintf(stderr, L"nvram: syntax error in config file %s, line %d: Not a valid integer: %ls.\n", config_filename, token->line, token->data.string); \
+					fwprintf(stderr, L"nvram: error in config file %s, line %d: not a valid integer: %ls.\n", config_filename, token->line, token->data.string); \
 					exit(EXIT_FAILURE); \
 				}
 
 #define EOL_TOKEN \
 				if (token->type != TOKEN_TYPE_EOL) { \
-					fwprintf(stderr, L"nvram: syntax error in config file %s, line %d: Additional parameter %s in statement.\n", config_filename, token->line, token->data.string); \
+					fwprintf(stderr, L"nvram: error in config file %s, line %d: additional parameter %s in statement.\n", config_filename, token->line, token->data.string); \
 				}
 
+#define NOT_EOL_TOKEN \
+				if (token->type == TOKEN_TYPE_EOL) { \
+					fwprintf(stderr, L"nvram: error in config file %s, line %d: incomplete statement.\n", config_filename, token->line);\
+					exit(EXIT_FAILURE); \
+				}
 
-/* Read and tokenize config file. */
-void read_config(struct list_head *token_list)
+/* Read config file. */
+void read_config(struct list_head *token_list, hardware_t *hardware_description, struct list_head *nvram_mapping)
 {
-	struct list_head *pos;
-	token_t          *token;
-	char              config_filename[CONFIG_PATH_LENGTH_MAX+1];
-	char              included_config_filename[CONFIG_PATH_LENGTH_MAX+1];
 	FILE             *config_file;
+	char              config_filename[CONFIG_PATH_LENGTH_MAX+1];
+	wchar_t          *identifier;
+	char              included_config_filename[CONFIG_PATH_LENGTH_MAX+1];
+	map_field_t      *map_field;
 	int               nesting_level=0;
+	struct list_head *pos, *map_pos;
+	long              position, length, i;
+	token_t          *token;
+	int               command_keyword;
 
 	/* Read and tokenize the main config file. */
 	strcpy(config_filename, CONFIG_BASE_FILENAME);
@@ -116,7 +129,8 @@ void read_config(struct list_head *token_list)
 		}	
 
 		/* This token must be a command keyword. */
-		switch (token_convert_keyword(token, commands)) {
+		command_keyword=token_convert_keyword(token, commands);
+		switch (command_keyword) {
 			case COMMAND_KEYWORD_INCLUDE:
 				/* Check nesting level. */
 				if (nesting_level > CONFIG_NESTING_MAX) {
@@ -125,15 +139,15 @@ void read_config(struct list_head *token_list)
 				}
 
 				/* Next token is a config file name. */
-				ANY_TOKEN
+				NEXT_TOKEN
 				if (token->type != TOKEN_TYPE_STRING) {
-					fwprintf(stderr, L"nvram: syntax error in config file %s, line %d: Not a valid config file name.\n", config_filename, token->line);
+					fwprintf(stderr, L"nvram: error in config file %s, line %d: not a valid config file name.\n", config_filename, token->line);
 					exit(EXIT_FAILURE);
 				}
 
 				/* Open included config file. */
 				if (wcstombs(included_config_filename, token->data.string, CONFIG_PATH_LENGTH_MAX) == -1) {
-					fwprintf(stderr, L"nvram: syntax error in config file %s, line %d: Not a valid config file name.\n", config_filename, token->line);
+					fwprintf(stderr, L"nvram: error in config file %s, line %d: not a valid config file name.\n", config_filename, token->line);
 					exit(EXIT_FAILURE);
 				}
 				included_config_filename[CONFIG_PATH_LENGTH_MAX]='\0';
@@ -144,7 +158,7 @@ void read_config(struct list_head *token_list)
 				strncpy(config_filename, included_config_filename, CONFIG_PATH_LENGTH_MAX);
 
 				/* Next token is the line end. */
-				ANY_TOKEN
+				NEXT_TOKEN
 
 				/* Read included file and add the tokens below this include command. */
 				token_tokenize_stream(config_file, token->list.next);
@@ -158,48 +172,164 @@ void read_config(struct list_head *token_list)
 
 			case COMMAND_KEYWORD_HARDWARE:
 				/* Next token is a hardware description. */
-				ANY_TOKEN
+				NEXT_TOKEN
 				switch (token_convert_keyword(token, hardware_descriptions)) {
 					case HARDWARE_DESCRIPTION_INTEL:
 					case HARDWARE_DESCRIPTION_VIA82Cxx:
 					case HARDWARE_DESCRIPTION_VIA823x:
 					case HARDWARE_DESCRIPTION_DS1685:
+						hardware_description->type=token->data.integer_number;
 						break;
 					default:
-						fwprintf(stderr, L"nvram: syntax error in config file %s, line %d: Not a valid hardware description.\n", config_filename, token->line);
+						fwprintf(stderr, L"nvram: error in config file %s, line %d: not a valid hardware description.\n", config_filename, token->line);
 						exit(EXIT_FAILURE);
 				}
 
 				/* Next token is the line end. */
-				ANY_TOKEN
+				NEXT_TOKEN
 				EOL_TOKEN
 				break;
 
+			/* All field commands start the same way. */
 			case COMMAND_KEYWORD_BYTEARRAY:
 			case COMMAND_KEYWORD_STRING:
+			case COMMAND_KEYWORD_BITFIELD:
 				/* Next token is an identifier. */
-				ANY_TOKEN
-				if (token->type != TOKEN_TYPE_STRING) {
-					fwprintf(stderr, L"nvram: syntax error in config file %s, line %d: Not a valid identifier.\n", config_filename, token->line);
-					exit(EXIT_FAILURE);
+				NEXT_TOKEN
+				NOT_EOL_TOKEN
+				identifier=token->data.string;
+
+				/* Check if this identifier already exists. */
+				list_for_each(map_pos, nvram_mapping) {
+					map_field=list_entry(map_pos, map_field_t, list);
+					if (wcscmp(map_field->name, identifier) == 0) {
+						fwprintf(stderr, L"nvram: error in config file %s, line %d: identifier %ls already used.\n", config_filename, token->line, identifier);
+						exit(EXIT_FAILURE);
+					}
 				}
 
-				/* Next token is the integer position. */
-				ANY_TOKEN
-				INTEGER_TOKEN
-
-				/* Next token is the integer length. */
-				ANY_TOKEN
-				INTEGER_TOKEN
-
-				/* Next token is the line end. */
-				ANY_TOKEN
-				EOL_TOKEN
+				/* Next switch distiguishes between the various field types. */
 				break;
 
 			default:
-				fwprintf(stderr, L"nvram: syntax error in config file %s, line %d: No such keyword %ls.\n", config_filename, token->line, token->data.string);
+				fwprintf(stderr, L"nvram: error in config file %s, line %d: no such keyword %ls.\n", config_filename, token->line, token->data.string);
 				exit(EXIT_FAILURE);
+		}
+
+		/* Distinguish between the field types. */
+		switch (command_keyword) {
+			case COMMAND_KEYWORD_BYTEARRAY:
+				/* Next token is the integer position. */
+				NEXT_TOKEN
+				INTEGER_TOKEN
+				position=token->data.integer_number;
+
+				/* Next token is the integer length. */
+				NEXT_TOKEN
+				INTEGER_TOKEN
+				length=token->data.integer_number;
+
+				/* Create new mapping entry for the token. */
+				if ((map_field=map_field_new()) == NULL) {
+					perror("read_config, map_field_new");
+					exit(EXIT_FAILURE);
+				}
+				map_field->type=MAP_FIELD_TYPE_BYTEARRAY;
+				map_field->name=identifier;
+				map_field->data.bytearray.position=position;
+				map_field->data.bytearray.length=length;
+
+				/* Add it up to the NVRAM mapping list. */
+				list_add_tail(&map_field->list, nvram_mapping);
+
+				/* Next token is the line end. */
+				NEXT_TOKEN
+				EOL_TOKEN
+				break;
+
+			case COMMAND_KEYWORD_STRING:
+				/* Next token is the integer position. */
+				NEXT_TOKEN
+				INTEGER_TOKEN
+				position=token->data.integer_number;
+
+				/* Next token is the integer length. */
+				NEXT_TOKEN
+				INTEGER_TOKEN
+				length=token->data.integer_number;
+
+				/* Create new mapping entry for the token. */
+				if ((map_field=map_field_new()) == NULL) {
+					perror("read_config, map_field_new");
+					exit(EXIT_FAILURE);
+				}
+				map_field->type=MAP_FIELD_TYPE_STRING;
+				map_field->name=identifier;
+				map_field->data.string.position=position;
+				map_field->data.string.length=length;
+
+				/* Add it up to the NVRAM mapping list. */
+				list_add_tail(&map_field->list, nvram_mapping);
+
+				/* Next token is the line end. */
+				NEXT_TOKEN
+				EOL_TOKEN
+				break;
+
+			case COMMAND_KEYWORD_BITFIELD:
+				/* Next token is the bit count. */
+				NEXT_TOKEN
+				INTEGER_TOKEN
+				length=token->data.integer_number;
+
+				/* Check the bit count is at most the maximum bit count. */
+				if ((length < 1) || (length > MAP_BITFIELD_MAX_BITS)) {
+					fwprintf(stderr, L"nvram: error in config file %s, line %d: number of bits in a bitfield has to be between 1 and %d.\n", config_filename, token->line, MAP_BITFIELD_MAX_BITS);
+					exit(EXIT_FAILURE);
+				}
+
+				/* Create new mapping entry for the token. */
+				if ((map_field=map_field_new()) == NULL) {
+					perror("read_config, map_field_new");
+					exit(EXIT_FAILURE);
+				}
+				map_field->type=MAP_FIELD_TYPE_BITFIELD;
+				map_field->name=identifier;
+				map_field->data.bitfield.length=length;
+
+				/* Next tokens have to be integer pairs. */
+				for (i=0; i < length; i++) {
+					NEXT_TOKEN
+					if (token_convert_integer_pair(token) == -1) {
+						fwprintf(stderr, L"nvram: error in config file %s, line %d: not a valid integer pair: %ls.\n", config_filename, token->line, token->data.string);
+						exit(EXIT_FAILURE);
+					}
+					if ((token->data.integer_pair.second < 0) || (token->data.integer_pair.second > 7)) {
+						fwprintf(stderr, L"nvram: error in config file %s, line %d: bit number must be between 0 and 7.\n", config_filename, token->line);
+						exit(EXIT_FAILURE);
+					}
+
+					/* Set bit position. */
+					map_field->data.bitfield.position[i].byte=token->data.integer_pair.first;
+					map_field->data.bitfield.position[i].bit=token->data.integer_pair.second;
+				}
+
+				/* Next tokens are arbitrary strings. */
+				for (i=0; i < (1<<length); i++) {
+					NEXT_TOKEN
+					NOT_EOL_TOKEN
+
+					/* Set value. */
+					map_field->data.bitfield.values[i]=token->data.string;
+				}
+
+				/* Add it up to the NVRAM mapping list. */
+				list_add_tail(&map_field->list, nvram_mapping);
+
+				/* Next token is the line end. */
+				NEXT_TOKEN
+				EOL_TOKEN
+				break;
 		}
 
 		/* Next token. */
@@ -215,6 +345,9 @@ void read_config(struct list_head *token_list)
 				break;
 			case TOKEN_TYPE_INTEGER:
 				fwprintf(stderr, L"I:%d ", token->data.integer_number);
+				break;
+			case TOKEN_TYPE_INTEGER_PAIR:
+				fwprintf(stderr, L"IP:%d/%d ", token->data.integer_pair.first, token->data.integer_pair.second);
 				break;
 			case TOKEN_TYPE_STRING:
 				fwprintf(stderr, L"S:%ls ", token->data.string);
@@ -234,240 +367,110 @@ void read_config(struct list_head *token_list)
 }
 
 
-/* Get hardware description from tokens. */
-int get_hardware_description(struct list_head *token_list)
-{
-	struct list_head *pos;
-	token_t          *token;
-
-	/* Go through all tokens. */
-	pos=token_list->next;
-	while (pos != token_list) {
-		/* Get the current token. */
-		token=list_entry(pos, token_t, list);
-
-		/* Skip EOF tokens. */
-		if (token->type == TOKEN_TYPE_EOF) {
-  		pos = pos->next;
-			continue;
-		}	
-
-		/* This token is a command keyword. */
-		switch (token->data.keyword) {
-			case COMMAND_KEYWORD_HARDWARE:
-				NEXT_TOKEN
-				
-				/* Return hardware index. */
-				return (int)token->data.integer_number;
-
-			case COMMAND_KEYWORD_BYTEARRAY:
-			case COMMAND_KEYWORD_STRING:
-				/* Skip identifier, position, length, and line end. */
-				NEXT_TOKEN
-				NEXT_TOKEN
-				NEXT_TOKEN
-				NEXT_TOKEN
-				break;
-		}
-
-		/* Next token. */
-		pos = pos->next;
-	}
-
-	/* No match. Return failure. */
-	return -1;
-}
-
-
 /* List the available identifiers. */
-void command_list(int argc, char *argv[], struct list_head *token_list)
+void command_list(int argc, char *argv[], struct list_head *mapping_list)
 {
 	struct list_head *pos;
-	token_t          *token;
-	wchar_t          *identifier;
-	long              position, length;
+	map_field_t      *map_field;
+	long              i;
 
-	/* List command has no further arguments. */
-	if (argc != 2) {
-		fwprintf(stderr, USAGE);
-		exit(EXIT_FAILURE);
-	}
+	/* Go through all map fields. */
+	list_for_each(pos, mapping_list) {
+		/* Get the current field. */
+		map_field=list_entry(pos, map_field_t, list);
 
-	/* Go through all tokens. */
-	pos=token_list->next;
-	while (pos != token_list) {
-		/* Get the current token. */
-		token=list_entry(pos, token_t, list);
+		/* Switch by field type. */
+		switch (map_field->type) {
+			case MAP_FIELD_TYPE_BYTEARRAY:
+				/* Print bytearray field. */
+				fwprintf(stdout, L"bytearray %ls 0x%02x %d\n", map_field->name, map_field->data.bytearray.position, map_field->data.bytearray.length);
+				break;
 
-		/* Skip EOF tokens. */
-		if (token->type == TOKEN_TYPE_EOF) {
-  		pos = pos->next;
-			continue;
+			case MAP_FIELD_TYPE_STRING:
+				/* Print string field. */
+				fwprintf(stdout, L"string %ls 0x%02x %d\n", map_field->name, map_field->data.string.position, map_field->data.string.length);
+				break;
+
+			case MAP_FIELD_TYPE_BITFIELD:
+				/* Print bitfield. */
+				fwprintf(stdout, L"bitfield %ls %d ", map_field->name, map_field->data.bitfield.length);
+				for (i=0; i < map_field->data.bitfield.length; i++) {
+					fwprintf(stdout, L"0x%02x:%1d ", map_field->data.bitfield.position[i].byte, map_field->data.bitfield.position[i].bit);
+				}
+				for (i=0; i < (1<<map_field->data.bitfield.length); i++) {
+					fwprintf(stdout, L"%ls ", map_field->data.bitfield.values[i]);
+				}
+				fwprintf(stdout, L"\n");
+				break;
+
+			default:
+				fwprintf(stderr, L"nvram: unknown field type %d for field %ls in configuration.\n", map_field->type, map_field->name);
+				exit(EXIT_FAILURE);
 		}
-
-		/* This token is a command keyword. */
-		switch (token->data.keyword) {
-			case COMMAND_KEYWORD_INCLUDE:
-				/* Skip pathname token and line end. */
-				NEXT_TOKEN
-				NEXT_TOKEN
-				break;
-
-			case COMMAND_KEYWORD_HARDWARE:
-				/* Skip hardware type token and line end. */
-				NEXT_TOKEN
-				NEXT_TOKEN
-				break;
-
-			case COMMAND_KEYWORD_BYTEARRAY:
-				/* Get identifier token. */
-				NEXT_TOKEN
-				identifier=token->data.string;
-
-				/* Get position token. */
-				NEXT_TOKEN
-				position=token->data.integer_number; 
-
-				/* Get length token. */
-				NEXT_TOKEN
-				length=token->data.integer_number; 
-			
-				/* Print bytearray. */
-				fwprintf(stdout, L"bytearray %ls 0x%02x %d\n", identifier, position, length);
-
-				/* Skip line end. */
-				NEXT_TOKEN
-				break;
-
-			case COMMAND_KEYWORD_STRING:
-				/* Get identifier token. */
-				NEXT_TOKEN
-				identifier=token->data.string;
-
-				/* Get position token. */
-				NEXT_TOKEN
-				position=token->data.integer_number; 
-
-				/* Get length token. */
-				NEXT_TOKEN
-				length=token->data.integer_number; 
-				
-				/* Print string. */
-				fwprintf(stdout, L"string %ls 0x%02x %d\n", identifier, position, length);
-
-				/* Skip line end. */
-				NEXT_TOKEN
-				break;
-		}
-
-		/* Next token. */
-		pos = pos->next;
 	}
 }
 
 
 /* Get data from nvram. */
-void command_get(int argc, char *argv[], struct list_head *token_list)
+void command_get(int argc, char *argv[], struct list_head *mapping_list)
 {
 	struct list_head *pos;
-	token_t          *token;
+	map_field_t      *map_field;
 	unsigned int      argcnt=2;
-	wchar_t          *identifier;
-	long              position, length;
 	unsigned int      i;
 	unsigned char     nvram_data;
+	unsigned int      bitfield_data;
 
 	/* Go through the remaining parameters. */
 	while (argcnt<argc)
 	{
-		/* Go through all tokens. */
-		pos=token_list->next;
-		while (pos != token_list) {
-			/* Get the current token. */
-			token=list_entry(pos, token_t, list);
+		/* Go through all map fields. */
+		list_for_each(pos, mapping_list) {
+			/* Get the current field. */
+			map_field=list_entry(pos, map_field_t, list);
 
-			/* Skip EOF tokens. */
-			if (token->type == TOKEN_TYPE_EOF) {
-  			pos = pos->next;
-				continue;
-			}
-
-			/* This token is a command keyword. */
-			switch (token->data.keyword) {
-				case COMMAND_KEYWORD_INCLUDE:
-					/* Skip pathname token and line end. */
-					NEXT_TOKEN
-					NEXT_TOKEN
-					break;
-
-				case COMMAND_KEYWORD_HARDWARE:
-					/* Skip hardware type token and line end. */
-					NEXT_TOKEN
-					NEXT_TOKEN
-					break;
-
-				case COMMAND_KEYWORD_BYTEARRAY:
-					/* Get identifier token. */
-					NEXT_TOKEN
-					identifier=token->data.string;
-				
-					/* Get position token. */
-					NEXT_TOKEN
-					position=token->data.integer_number; 
-
-					/* Get length token. */
-					NEXT_TOKEN
-					length=token->data.integer_number; 
-	
-					/* Compare the current identifier with the input string from command line. */
-					if (wcsmbscmp(identifier, argv[argcnt]) == 0) {
-						/* Found the identifier. Print data. */
-						for (i=0;i<length;i++) {
-							nvram_data=nvram_read(position+i);
-							if (i < length-1) {
-								fwprintf(stdout, L"%02x ",nvram_data);
+			/* Compare the current identifier with the input string from command line. */
+			if (wcsmbscmp(map_field->name, argv[argcnt]) == 0) {
+				/* Found the identifier. */
+				/* Switch by field type. */
+				switch (map_field->type) {
+					case MAP_FIELD_TYPE_BYTEARRAY:
+						/* Print bytearray data. */
+						for (i=0; i < map_field->data.bytearray.length; i++) {
+							nvram_data=nvram_read(map_field->data.bytearray.position+i);
+							if (i < map_field->data.bytearray.length-1) {
+								fwprintf(stdout, L"%02x ", nvram_data);
 							} else {
-								fwprintf(stdout, L"%02x\n",nvram_data);
+								fwprintf(stdout, L"%02x\n", nvram_data);
 							}
 						}
-					}
+						break;
 
-					/* Skip line end. */
-					NEXT_TOKEN
-					break;
-
-				case COMMAND_KEYWORD_STRING:
-					/* Get identifier token. */
-					NEXT_TOKEN
-					identifier=token->data.string;
-				
-					/* Get position token. */
-					NEXT_TOKEN
-					position=token->data.integer_number; 
-
-					/* Get length token. */
-					NEXT_TOKEN
-					length=token->data.integer_number; 
-					
-					/* Compare the current identifier with the input string from command line. */
-					if (wcsmbscmp(identifier, argv[argcnt]) == 0) {
-						/* Found the identifier. Print data. */
-						for (i=0;i<length;i++) {
-							nvram_data=nvram_read(position+i);
+					case MAP_FIELD_TYPE_STRING:
+						/* Print string data. */
+						for (i=0; i < map_field->data.string.length; i++) {
+							nvram_data=nvram_read(map_field->data.string.position+i);
 							if (nvram_data != 0) {
 								fwprintf(stdout, L"%c", nvram_data);
 							} else break;
 						}
 						fwprintf(stdout, L"\n");
-					}
+						break;
+					case MAP_FIELD_TYPE_BITFIELD:
+						/* Print bitfield data. */
+						bitfield_data=0;
+						for (i=0; i < map_field->data.bitfield.length; i++) {
+							nvram_data=nvram_read(map_field->data.bitfield.position[i].byte);
+							bitfield_data|=(nvram_data & (1<<map_field->data.bitfield.position[i].bit))?(1<<i):0;
+						}
+						fwprintf(stdout, L"%ls\n", map_field->data.bitfield.values[bitfield_data]);
+						break;
 
-					/* Skip line end. */
-					NEXT_TOKEN
-					break;
+					default:
+						fwprintf(stderr, L"nvram: unknown field type %d for field %ls in configuration.\n", map_field->type, map_field->name);
+						exit(EXIT_FAILURE);
+				}
 			}
-
-			/* Next token. */
-			pos = pos->next;
 		}
 
 		/* Next identifier. */
@@ -477,133 +480,81 @@ void command_get(int argc, char *argv[], struct list_head *token_list)
 
 
 /* Set data in nvram. */
-void command_set(int argc, char *argv[], struct list_head *token_list)
+void command_set(int argc, char *argv[], struct list_head *mapping_list)
 {
 	struct list_head *pos;
-	token_t          *token;
+	map_field_t      *map_field;
 	unsigned int      argcnt=2;
-	wchar_t          *identifier;
-	long              position, length;
 	unsigned int      i;
 	unsigned char    *nvram_bytearray;
 
 	/* Go through the remaining parameters. */
 	while (argcnt<argc)
 	{
-		/* Go through all tokens. */
-		pos=token_list->next;
-		while (pos != token_list) {
-			/* Get the current token. */
-			token=list_entry(pos, token_t, list);
+		/* Go through all map fields. */
+		list_for_each(pos, mapping_list) {
+			/* Get the current field. */
+			map_field=list_entry(pos, map_field_t, list);
 
-			/* Skip EOF tokens. */
-			if (token->type == TOKEN_TYPE_EOF) {
-  			pos = pos->next;
-				continue;
-			}
-
-			/* This token is a command keyword. */
-			switch (token->data.keyword) {
-				case COMMAND_KEYWORD_INCLUDE:
-					/* Skip pathname token and line end. */
-					NEXT_TOKEN
-					NEXT_TOKEN
-					break;
-
-				case COMMAND_KEYWORD_HARDWARE:
-					/* Skip hardware type token and line end. */
-					NEXT_TOKEN
-					NEXT_TOKEN
-					break;
-
-				case COMMAND_KEYWORD_BYTEARRAY:
-					/* Get identifier token. */
-					NEXT_TOKEN
-					identifier=token->data.string;
-				
-					/* Get position token. */
-					NEXT_TOKEN
-					position=token->data.integer_number; 
-
-					/* Get length token. */
-					NEXT_TOKEN
-					length=token->data.integer_number; 
-
-					/* Compare the current identifier with the input string from command line. */
-					if (wcsmbscmp(identifier, argv[argcnt]) == 0) {
-						/* Found the identifier. Get data from command line. */
+			/* Compare the current identifier with the input string from command line. */
+			if (wcsmbscmp(map_field->name, argv[argcnt]) == 0) {
+				/* Found the identifier. */
+				/* Switch by field type. */
+				switch (map_field->type) {
+					case MAP_FIELD_TYPE_BYTEARRAY:
+						/* Get data from command line. */
 						argcnt++;
 						if (argcnt >= argc) {
-							fwprintf(stderr, L"nvram: value for identifier %ls missing on command line.\n", identifier);
+							fwprintf(stderr, L"nvram: value for field %ls missing on command line.\n", map_field->name);
 							exit(EXIT_FAILURE);
 						}
 
 						/* Write bytes. */
-						nvram_bytearray=malloc(length);
-						if (convert_bytearray(nvram_bytearray, argv[argcnt], length) != NULL) {
+						nvram_bytearray=malloc(map_field->data.bytearray.length);
+						if (convert_bytearray(nvram_bytearray, argv[argcnt], map_field->data.bytearray.length) != NULL) {
 							/* Ok. Now write in into nvram. */
-							for (i=0;i<length;i++) {
-								nvram_write(position+i,nvram_bytearray[i]);
+							for (i=0; i < map_field->data.bytearray.length; i++) {
+								nvram_write(map_field->data.bytearray.position+i, nvram_bytearray[i]);
 							}
 						} else {
 							/* Not ok. */
-							fwprintf(stderr, L"nvram: ignored invalid value for identifier %ls on command line.\n", identifier);
+							fwprintf(stderr, L"nvram: ignored invalid value for field %ls on command line.\n", map_field->name);
 						}
 						free(nvram_bytearray);
-					}
+						break;
 
-					/* Skip line end. */
-					NEXT_TOKEN
-					break;
-
-				case COMMAND_KEYWORD_STRING:
-					/* Get identifier token. */
-					NEXT_TOKEN
-					identifier=token->data.string;
-				
-					/* Get position token. */
-					NEXT_TOKEN
-					position=token->data.integer_number;
-
-					/* Get length token. */
-					NEXT_TOKEN
-					length=token->data.integer_number; 
-					
-					/* Compare the current identifier with the input string from command line. */
-					if (wcsmbscmp(identifier, argv[argcnt]) == 0) {
+					case MAP_FIELD_TYPE_STRING:
 						/* Found the identifier. Get data from command line. */
 						argcnt++;
 						if (argcnt >= argc) {
-							fwprintf(stderr, L"nvram: value for identifier %ls missing on command line.\n", identifier);
+							fwprintf(stderr, L"nvram: value for field %ls missing on command line.\n",  map_field->name);
 							exit(EXIT_FAILURE);
 						}
 
 						/* Write bytes. */
-						if (strlen(argv[argcnt]) > length) {
+						if (strlen(argv[argcnt]) > map_field->data.string.length) {
 							/* String is longer than field length. */
-							fwprintf(stderr, L"nvram: string value for identifier %ls too long.\n", identifier);
+							fwprintf(stderr, L"nvram: string value for field %ls too long.\n",  map_field->name);
 							exit(EXIT_FAILURE);
-						}	else if (strlen(argv[argcnt]) == length) {
+						}	else if (strlen(argv[argcnt]) == map_field->data.string.length) {
 							/* String is equal the field length. */
-							for (i=0;i<length;i++) {
-								nvram_write(position+i, argv[argcnt][i]);
+							for (i=0; i < map_field->data.string.length; i++) {
+								nvram_write(map_field->data.string.position+i, argv[argcnt][i]);
 							}	
 						} else {
 							/* String is shorter than the field length. */
-							for (i=0;i<strlen(argv[argcnt]);i++) {
-								nvram_write(position+i, argv[argcnt][i]);
+							for (i=0; i < strlen(argv[argcnt]); i++) {
+								nvram_write(map_field->data.string.position+i, argv[argcnt][i]);
 							}
-							nvram_write(position+i, 0);
+							nvram_write(map_field->data.string.position+i, 0);
 						}
-					}
+						break;
 
-					/* Skip line end. */
-					NEXT_TOKEN
-					break;
+					default:
+						fwprintf(stderr, L"nvram: unknown field type %d for field %ls in configuration.\n", map_field->type, map_field->name);
+						exit(EXIT_FAILURE);
+				}
 			}
-
-			/* Next token. */
-			pos = pos->next;
 		}
 
 		/* Next identifier. */
@@ -616,16 +567,17 @@ void command_set(int argc, char *argv[], struct list_head *token_list)
 int main(int argc, char *argv[])
 {
 	LIST_HEAD(token_list);
+	LIST_HEAD(nvram_mapping);
+	hardware_t hardware_description;
 
 #ifdef HAS_LOCALE
 	/* Use system locale instead of "C". */
 	setlocale(LC_ALL, "");
 #endif
 
-	/* Read and tokenize configuration file */
-	read_config(&token_list);
+	/* Read configuration file(s). */
+	read_config(&token_list, &hardware_description, &nvram_mapping);
 
-	/* Config file syntax is ok. */
 	/* Get mode from first parameter. */
 	if (argc < 2) {
 		fwprintf(stderr, USAGE);
@@ -633,26 +585,26 @@ int main(int argc, char *argv[])
 	}
 
 	/* Check for list command. */
-	if (strcmp(argv[1], "list") == 0) { command_list(argc, argv, &token_list); }
+	if (strcmp(argv[1], "list") == 0) { command_list(argc, argv, &nvram_mapping); }
 	else if (strcmp(argv[1], "get") == 0) {
 		/* Open NVRAM. */
-		if (nvram_open(get_hardware_description(&token_list)) == -1) {
+		if (nvram_open(hardware_description.type) == -1) {
 			perror("nvram_open");
 			exit(EXIT_FAILURE);
 		}	
 
-		command_get(argc, argv, &token_list);
+		command_get(argc, argv, &nvram_mapping);
 	
 		/* Close NVRAM. */
 		nvram_close();
 	}	else if (strcmp(argv[1], "set") == 0) {
 		/* Open NVRAM. */
-		if (nvram_open(get_hardware_description(&token_list)) == -1) {
+		if (nvram_open(hardware_description.type) == -1) {
 			perror("nvram_open");
 			exit(EXIT_FAILURE);
 		}	
 
-		command_set(argc, argv, &token_list);
+		command_set(argc, argv, &nvram_mapping);
 	
 		/* Close NVRAM. */
 		nvram_close();

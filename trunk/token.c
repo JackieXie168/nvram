@@ -250,3 +250,37 @@ int token_convert_integer(token_t *token)
 	} else return -1;
 }
 
+
+/* Convert token into integer pair separated by a colon. */
+int token_convert_integer_pair(token_t *token)
+{
+	wchar_t *remainder;
+	long     result_first, result_second;
+
+	/* Return ok for tokens which are already integers. */
+	if (token->type == TOKEN_TYPE_INTEGER_PAIR) return 0;
+
+	/* Don't convert tokens which are not a string. */
+	if (token->type != TOKEN_TYPE_STRING) return -1;
+	
+	/* Convert string to integer. */
+	result_first=wcstol(token->data.string, &remainder, 0);
+	if (*remainder == L':') {
+		/* Colon follows, ok. */
+		result_second=wcstol(remainder+1, &remainder, 0);
+		if (*remainder == L'\0') {
+			/* No remainder, ok. */
+			/* Free the string storage. */
+			free(token->data.string);
+
+			/* Change token data to integer number. */
+			token->type=TOKEN_TYPE_INTEGER_PAIR;
+			token->data.integer_pair.first=result_first;
+			token->data.integer_pair.second=result_second;
+			return 0;
+		}
+	}
+
+	/* Error. */
+	return -1;
+}
