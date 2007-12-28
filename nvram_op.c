@@ -60,7 +60,7 @@ static int nvram_address(unsigned int address)
         outb(address,0x70);
         return 0x71;
 			default:	
-				/* Adresses below 128 can be accessed via the usual RTC146818 mechanism on all other chips. */
+				/* Adresses below 128 can be accessed via the usual port 0x70/0x71 mechanism on all other chips. */
 				outb(address,0x70);
 				return 0x71;
 		}

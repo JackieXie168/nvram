@@ -47,16 +47,18 @@ wchar_t *commands[] = {
 
 /* Recognized hardware_descriptions. */
 wchar_t *hardware_descriptions[] = {
+	L"standard",
 	L"intel",
 	L"via82cxx",
 	L"via823x",
 	L"ds1685",
 	(wchar_t *)NULL };
 
-#define HARDWARE_DESCRIPTION_INTEL    0
-#define HARDWARE_DESCRIPTION_VIA82Cxx 1
-#define HARDWARE_DESCRIPTION_VIA823x  2
-#define HARDWARE_DESCRIPTION_DS1685   3
+#define HARDWARE_DESCRIPTION_STANDARD 0
+#define HARDWARE_DESCRIPTION_INTEL    1
+#define HARDWARE_DESCRIPTION_VIA82Cxx 2
+#define HARDWARE_DESCRIPTION_VIA823x  3
+#define HARDWARE_DESCRIPTION_DS1685   4
 
 
 typedef struct {
@@ -174,6 +176,7 @@ void read_config(struct list_head *token_list, hardware_t *hardware_description,
 				/* Next token is a hardware description. */
 				NEXT_TOKEN
 				switch (token_convert_keyword(token, hardware_descriptions)) {
+					case HARDWARE_DESCRIPTION_STANDARD:
 					case HARDWARE_DESCRIPTION_INTEL:
 					case HARDWARE_DESCRIPTION_VIA82Cxx:
 					case HARDWARE_DESCRIPTION_VIA823x:
