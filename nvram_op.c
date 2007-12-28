@@ -1,7 +1,9 @@
 /*
  *   nvram_op.c -- basic operations on the nvram.
+ *
+ *   Copyleft (c) 2007, Jan Kandziora <nvram@kandziora-ing.de>
+ * 
  */
-
 
 #include <sys/io.h>
 #include <sys/types.h>

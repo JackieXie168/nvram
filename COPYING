@@ -1,15 +1,21 @@
 nvram -- A tool to operate on extended nvram most modern PC chipsets offer.
 
-Copyright (C) 2007, Jan Kandziora <jjj@gmx.de> (main developer)
 
-Other copyleft (GPL) holders:
-* nvram was developed using Sergei Haller's observations how the different
-  kinds of nvram are connected in the PC. Sergei Haller developed a program
-  "nvram-wakeup", which manipulates the nvram to set a wakeup time
-  in a modern PC's BIOS. However, Sergei had misunderstood some things about
-  the Dallas DS1685, so I had to correct more than I learned...
-* The list.h implementation was made from the Linux kernel's one at
+Main developer:
+	Copyleft (c) 2007, Jan Kandziora <nvram@kandziora-ing.de>
+
+Bios and board detection: Information taken from nvram-wakeup/bios.c
+	(c) 2002, Bernhard "Bero" Rosenkraenzer <bero@arklinux.org>
+	(c) 2003, Sergei Haller <sergei@sergei-haller.de>
+
+NVRAM access: Information taken from nvram-wakeup/nvramops.c
+	(c) 2001-2004, Sergei Haller <sergei@sergei-haller.de>
+
+List implementation:
+	The list.h implementation was made from the Linux kernel's one at
   /usr/include/linux/list.h.
+
+
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by

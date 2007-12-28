@@ -2,9 +2,12 @@
 #define LIST_H
 
 /*
- * Incredibly simple doubly linked list implementation.
- * Distilled to the most useful functions from Linux kernel's
- * /usr/include/linux/list.h
+ *   Incredibly simple doubly linked list implementation.
+ *   Distilled to the most useful functions from Linux kernel's
+ *   /usr/include/linux/list.h
+ *
+ *   Copyleft (c) 2007, Jan Kandziora <nvram@kandziora-ing.de>
+ * 
  */
 
 
