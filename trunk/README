@@ -1,0 +1,253 @@
+*** NVRAM Utility README file.
+*** Copyleft (c) 2007, Jan Kandziora <nvram@kandziora-ing.de>
+***
+*** This is the main documentation for the nvram utility by Jan Kandziora.
+
+
+
+FUNCTIONAL BACKGROUND OF NVRAM
+==============================
+The NVRAM (Non-Volatile-RAM, often called CMOS for historical reasons) is a
+small additional memory inside a computer. It is backed up by a battery
+connected to the computer mainboard, so data in that NVRAM is *not* lost
+on mains power down, as data in main memory is. These days, the battery is
+usually a CR2032 lithium button cell which is placed in a battery clip on the
+mainboard. The NVRAM is small (typically 64 to 256 bytes), as the chip it
+resides in has to save energy so you never need to replace the battery. 
+
+The purpose of NVRAM is to save some variable data over power down, even when
+no other permanent memory (e.g. a harddisk) is accessible. This data may be
+the preferred boot media or low level hardware settings. So the NVRAM is
+basically the only permanent data storage the BIOS of the computer may rely on.
+(Note: This is not entirely true -- there is a FlashROM in most PCs today,
+which needs no mains power either. However, writing the BIOS Flash is abhored
+by a lot of computer users as you may damage the FlashROM chip and thus, turn
+your PC into an expensive brick. In addition, some mainboards require to turn a
+jumper to enable flashing for the above reason -- a virus or trojan must not
+turn the the PC into a brick -- but this renders flashing impractical for most
+applications.)
+
+
+There a a lot of different mainboards and BIOS programs for PCs and such, the
+size of the NVRAM, the method for accessing it, and the sort of information
+stored in it and its position are an impressive mess. (In fact, *all* things
+designed by the PC industry ended up in an impressive mess so far, NVRAM is
+only a prominent example.)
+
+
+
+MOTIVATION OF THIS NVRAM UTILITY
+================================
+Before this utility, there were no comprehensive utilities for the Linux OS
+which make it possible to view/change variables inside the NVRAM without
+having to look at additional documentation to find out which bits in the NVRAM
+are containing which kind of BIOS setting. For changing NVRAM, one have to
+find out which checksum mechanism the BIOS uses for the NVRAM, and where the
+checksum resides. To do this, one have to find out which NVRAM chip the
+mainboard uses, which BIOS vendor and version the PC has etc.
+This has made it impractical, if not impossible, to manipulate the NVRAM from
+within the running OS, automatically by a script even less than ever.
+
+There are some partial solutions to this problem, e.g. the Linux nvram driver,
+which allows to read and write the first 128 byte of nvram through the
+/dev/nvram device node and read some old-tyme (and pesudo-standard) BIOS
+settings from the /proc/driver/nvram pseudofile. But no further semantic
+mapping is done and the checksum has to be calculated by hand.
+
+Another partial solution is nvram-wakeup, whose developers try to develop a
+portable solution for a particular BIOS setting, the "timed wakeup function"
+present in modern PCs. A useful function, but only adressing a part of the
+problem. But NVRAM wakeup has an extensive list of mainboards, BIOSes and
+calculates the correct NVRAM checksum automatically.
+
+Kudos to both! Their efforts made it easy for me to dive into the
+subject and significantly lowered the neccessary investigation to create
+this utility.
+
+
+While these existing programs do some useful things, this nvram utility 
+orders the whole mess and makes it possible e.g. to change the preferred boot
+device *e.g.* from CD to harddisk from *within* the OS *in a portable fashion*.
+But changing this particular setting is not the aim of this utility: It has
+access to all 256 NVRAM bytes on many mainboards, can map all fields in a NVRAM
+to identifiers, announces if a field is available, calculate and check/store
+the checksum(s) automatically and let the data be easily being extracted or
+altered by a shell script. So it addresses all the white space the other
+utilities left on the NVRAM map.
+
+
+In addition, the NVRAM layout is configured completely by configuration files,
+so anyone may easily change and extend existing maps if a map is not 100%
+matching the reality of the BIOS in question. You are invited to share your
+particular configuration to make the auto detection work fine for other users,
+too.
+
+As a small bonus, the tended hacker may define *additional* fields in the
+NVRAM e.g. to store settings on a diskless machine. Most PC BIOSes use only
+the first 128 byte of NVRAM and a few bytes above that border -- so there is
+much space for adding application specific variables.
+
+
+
+JOIN THE PARTY!
+===============
+The nvram configuration files are far from being complete. With any machine
+new on the market, something may have changed, at least the hardware and BIOS
+revision. I kindly ask you to provide information to extend (or correct) the
+existing configuration files. Please send some basic information -- the output
+of
+
+# nvram party_i_want_to_party
+
+-- via email to Jan Kandziora <nvram@kandziora-ing>. No dread, the data you'll
+send doesn't contain your personal data and couldn't be used to track you
+through the internet (plus: I won't do it, even if I could). It's just the
+whole nvram contents of your computer (at most 256 valid bytes) along with
+vendor and version strings from your computer's BIOS. Please write if you are
+eager to help -- I will then contact you to gather some more specific
+information about your computer's BIOS.
+
+
+
+CONFIGURATION
+=============
+The nvram utility uses a large number of configuration files. The main
+configuration file is /etc/nvram.conf. There is a directory /etc/nvram.d, where
+additional files for including from the main file are stored. The nvram utility
+changes its current directory to that directory after start, so symlinks
+within /etc/nvram.d may be relative to that directory (usually, the targets are
+just filenames without path components).
+
+In each configuration file, the same directives may be used.
+
+
+Field type directives:
+----------------------
+The NVRAM configuration lists a number of fields, each with a position and
+size given in bytes. Fields may overlap partly or as a whole. On set operation,
+the field given on the command line more right wins. The resulting map is
+applied to the system's NVRAM. If a field in the map exceeds the NVRAM size in
+the actual system, reads of such fields return always 0xff in the locations
+where no further NVRAM exists, and writes are a no-op in such regions. So an
+entry which seems to work may be broken. Take care of this when editing the
+NVRAM configuration!
+
+There are currently three directives for entry types:
+    * bytearray IDENTIFIER POSITION FIELD_SIZE
+    * string    IDENTIFIER POSITION FIELD_SIZE
+    * bitfield  IDENTIFIER n POSITION_0 .. POSITION_(n-1) VALUE_0 .. VALUE_(2^n)-1
+
+
+Bytearrays:
+~~~~~~~~~~~
+Bytearrays are a fixed number of bytes and are printed as non-prefixed hex
+bytes by default. On set operation, the exact number of bytes in the same
+format must be supplied as the value.
+
+EXAMPLE: Define a byte array of 50 bytes named "atbios_data" starting
+         at address 14.
+
+	bytearray atbios_data 0x0E 50
+
+
+Strings:
+~~~~~~~~
+Strings are stored as (multi-byte) chars in the system encoding and are
+printed as such. If an actual string is shorter than the field size (denoted
+by a \0 at the end), only that part of the field contents is printed.
+On set operation, the string may be at most the size of the field. A \0 is
+appended automatically, aside from the case where the field is completely
+filled -- then there is no \0 neccessary and thus, not written.
+The field size is fixed in the configuration and *not* dependend of the
+field contents.
+
+*** NOTES:
+
+    * International characters may occupy more than one byte per character,
+      especially in the UTF-8 encoding standard on modern systems.
+    * If the system encoding is changed, string fields may produce nonsense
+      on output. Use the "iconv" utility to fix that.
+
+EXAMPLE: Define a string field of maximum 4 bytes named "TEST_S" starting
+         at address 128.
+
+	string TEST_S 0x80 4
+
+
+Bitfields:
+~~~~~~~~~~
+Bitfields are especially useful to tie together noadjacent data (a bit here,
+a bit there) so common in BIOS NVRAM data. "n" is the number of bits in the
+bitfield (so far, a maximum of 5 is hardcoded), followed by a number of
+NVRAM position codes for the bits in the format BYTE_POSITION:BIT_POSITION.
+The n position codes form a "virtual" bitfield, LSB is taken from
+position 0. Then, a number of 2^n values is applied to that "virtual"
+bitfield as the translations for certain bit combinations. A value may be
+noted more than once -- on set operation, the bit combination representing
+the first occurency of the value is written to NVRAM.
+
+EXAMPLE: Define two bitfields with the names "floppy_a_type" and "floppy_b_type"
+         with bits 4,5,6 (floppy B: 0,1,2) of NVRAM address 16.
+
+	bitfield floppy_a_type 3 0x10:4 0x10:5 0x10:6 none 360KB 1.2MB 720KB 1.44MB 2.88MB invalid invalid
+	bitfield floppy_b_type 3 0x10:0 0x10:1 0x10:2 none 360KB 1.2MB 720KB 1.44MB 2.88MB invalid invalid
+
+
+Checksum Directive:
+-------------------
+
+
+Include Directive:
+------------------
+The include directive
+    * include FILENAME
+allows to include other configuration files at the point where the include
+directive was given. Includes may be nested. Special character sequences are
+expanded to information taken from BIOS' DMI table:
+    * %bm BIOS vendor
+    * %bv BIOS version
+    * %br BIOS release date
+    * %sm system manufacturer 
+    * %sp system product code
+    * %sv system version
+    * %mm board manufacturer
+    * %mp board product code
+    * %mv board version
+    
+Usually, there a a few files and a lot of symlinks in /etc/nvram.d/, which
+allows to map the DMI information to actual configuration files.
+
+EXAMPLES: Include the correct hardware directive.
+          Include BIOS specific fields.
+
+	include %sm:%sp
+	include %bm:%bv
+
+
+Hardware directive:
+-------------------
+The NVRAM type is set with the directive
+    * hardware HARDWARE_NAME
+
+HARDWARE_NAME may be
+    * standard (for any compatible RTC -- only 64/128 bytes NVRAM!)
+    * intel    (for Intel ICHx southbridge series, 256 Byte)
+    * via82cxx (for VIA 82Cxx ISA bridge series, 256 Byte)
+    * via823x  (for VIA 823x ISA bridge series, 256 Byte)
+    * ds1685   (for distinct DS1685 RTC chips, 256 Byte)
+
+If no or a wrong hardware directive is given, the extended NVRAM (Bytes 128
+and above) is not accessible.
+
+EXAMPLE: Use via823x (and compatible) hardware access.
+
+	hardware via823x
+
+
+
+INVOCATION
+==========
+
+
+
+
