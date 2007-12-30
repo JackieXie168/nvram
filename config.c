@@ -20,7 +20,7 @@
 
 
 /* Recognized hardware descriptions. */
-wchar_t *hardware_descriptions[] = {
+wchar_t *hardware_types[] = {
 	L"standard",
 	L"intel",
 	L"via82cxx",
@@ -28,10 +28,19 @@ wchar_t *hardware_descriptions[] = {
 	L"ds1685",
 	(wchar_t *)NULL };
 
+/* Recognized checksum algorithms. */
+wchar_t *checksum_algorithms[] = {
+	L"standard",
+	L"short",
+	L"negative_sum",
+	L"negative_short",
+	(wchar_t *)NULL };
+
 /* Recognized commands. */
 wchar_t *commands[] = {
 	L"include",
 	L"hardware",
+	L"checksum",
 	L"bytearray",
 	L"string",
 	L"bitfield",
@@ -39,9 +48,10 @@ wchar_t *commands[] = {
 
 #define COMMAND_KEYWORD_INCLUDE   0
 #define COMMAND_KEYWORD_HARDWARE  1
-#define COMMAND_KEYWORD_BYTEARRAY 2
-#define COMMAND_KEYWORD_STRING    3
-#define COMMAND_KEYWORD_BITFIELD  4
+#define COMMAND_KEYWORD_CHECKSUM  2
+#define COMMAND_KEYWORD_BYTEARRAY 3
+#define COMMAND_KEYWORD_STRING    4
+#define COMMAND_KEYWORD_BITFIELD  5
 
 
 #define NEXT_TOKEN \
@@ -82,6 +92,7 @@ wchar_t *commands[] = {
 	fwprintf(stderr, L"nvram: error in config file %s, line %d: invalid escape sequence in config file name.\n", config_filename, token->line); \
 	exit(EXIT_FAILURE);
 
+
 /* Read config file. */
 void read_config(struct list_head *token_list, hardware_t *hardware_description, struct list_head *nvram_mapping)
 {
@@ -93,7 +104,9 @@ void read_config(struct list_head *token_list, hardware_t *hardware_description,
 	map_field_t      *map_field;
 	int               nesting_level=0;
 	struct list_head *pos, *map_pos;
-	long              position, length, i, j, k;
+	long              position, length, checksum_algorithm, checksum_position_count;
+	long              i, j, k;
+	long              checksum_position[MAP_CHECKSUM_MAX_POSITIONS];
 	token_t          *token;
 	int               command_keyword;
 
@@ -255,14 +268,15 @@ void read_config(struct list_head *token_list, hardware_t *hardware_description,
 			case COMMAND_KEYWORD_HARDWARE:
 				/* Next token is a hardware description. */
 				NEXT_TOKEN
-				switch (token_convert_keyword(token, hardware_descriptions)) {
-					case HARDWARE_DESCRIPTION_STANDARD:
-					case HARDWARE_DESCRIPTION_INTEL:
-					case HARDWARE_DESCRIPTION_VIA82Cxx:
-					case HARDWARE_DESCRIPTION_VIA823x:
-					case HARDWARE_DESCRIPTION_DS1685:
+				switch (token_convert_keyword(token, hardware_types)) {
+					case HARDWARE_TYPE_STANDARD:
+					case HARDWARE_TYPE_INTEL:
+					case HARDWARE_TYPE_VIA82Cxx:
+					case HARDWARE_TYPE_VIA823x:
+					case HARDWARE_TYPE_DS1685:
 						hardware_description->type=token->data.integer_number;
 						break;
+
 					default:
 						fwprintf(stderr, L"nvram: error in config file %s, line %d: not a valid hardware description.\n", config_filename, token->line);
 						exit(EXIT_FAILURE);
@@ -274,6 +288,7 @@ void read_config(struct list_head *token_list, hardware_t *hardware_description,
 				break;
 
 			/* All field commands start the same way. */
+			case COMMAND_KEYWORD_CHECKSUM:
 			case COMMAND_KEYWORD_BYTEARRAY:
 			case COMMAND_KEYWORD_STRING:
 			case COMMAND_KEYWORD_BITFIELD:
@@ -301,6 +316,70 @@ void read_config(struct list_head *token_list, hardware_t *hardware_description,
 
 		/* Distinguish between the field types. */
 		switch (command_keyword) {
+			case COMMAND_KEYWORD_CHECKSUM:
+				/* Next token is a checksum algorithm description. */
+				NEXT_TOKEN
+				switch (token_convert_keyword(token, checksum_algorithms)) {
+					case CHECKSUM_ALGORITHM_STANDARD_SUM:
+					case CHECKSUM_ALGORITHM_STANDARD_SHORT_SUM:
+					case CHECKSUM_ALGORITHM_NEGATIVE_SUM:
+					case CHECKSUM_ALGORITHM_NEGATIVE_SHORT_SUM:
+						checksum_algorithm=token->data.integer_number;
+						break;
+
+					default:
+						fwprintf(stderr, L"nvram: error in config file %s, line %d: not a valid checksum algorithm.\n", config_filename, token->line);
+						exit(EXIT_FAILURE);
+				}
+
+				/* Read checksum positions. */
+				/* Switch by checksum algorithm. */
+				checksum_position_count=1;
+				switch (checksum_algorithm) {
+					case CHECKSUM_ALGORITHM_STANDARD_SUM: 
+					case CHECKSUM_ALGORITHM_NEGATIVE_SUM:
+						checksum_position_count++;
+				}
+
+				for (i=0; i < checksum_position_count; i++) \
+				{
+					/* Next token is a position of a part of the checksum. */
+					NEXT_TOKEN
+					INTEGER_TOKEN
+					checksum_position[i]=token->data.integer_number;
+				}
+
+				/* Next token is the integer position of the area to checksum. */
+				NEXT_TOKEN
+				INTEGER_TOKEN
+				position=token->data.integer_number;
+
+				/* Next token is the integer length of the area to checksum. */
+				NEXT_TOKEN
+				INTEGER_TOKEN
+				length=token->data.integer_number;
+
+				/* Create new mapping entry for the token. */
+				if ((map_field=map_field_new()) == NULL) {
+					perror("read_config, map_field_new");
+					exit(EXIT_FAILURE);
+				}
+				map_field->type=MAP_FIELD_TYPE_CHECKSUM;
+				map_field->name=identifier;
+				map_field->data.checksum.algorithm=checksum_algorithm;
+				map_field->data.checksum.size=checksum_position_count;
+				for (i=0; i < checksum_position_count; i++) map_field->data.checksum.position[i]=checksum_position[i];
+				map_field->data.checksum.field_position=position;
+				map_field->data.checksum.field_length=length;
+
+				/* Add it up to the NVRAM mapping list. */
+				list_add_tail(&map_field->list, nvram_mapping);
+
+				/* Next token is the line end. */
+				NEXT_TOKEN
+				EOL_TOKEN
+				break;
+
 			case COMMAND_KEYWORD_BYTEARRAY:
 				/* Next token is the integer position. */
 				NEXT_TOKEN

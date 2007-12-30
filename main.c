@@ -11,6 +11,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -29,9 +30,110 @@
 #include "util.h"
 
 
+/* Checksum algorithm strings are defined in config.c */
+extern wchar_t *checksum_algorithms[];
+
+
 /* Usage message. */
 const wchar_t USAGE[] = L"USAGE: nvram dmi\n       nvram list\n       nvram get identifier [identifier]...\n       nvram set identifier value [identifier value]...\n";
 
+
+/* Calculate a NVRAM checksum. */
+uint16_t calculate_checksum(map_field_t *map_field)
+{
+	unsigned int i;
+	unsigned int checksum=0;
+
+	/* Calculate checksum. Switch by algorithm. */
+	switch (map_field->data.checksum.algorithm) {
+		case CHECKSUM_ALGORITHM_STANDARD_SUM:
+		case CHECKSUM_ALGORITHM_STANDARD_SHORT_SUM:
+			/* Standard checksum is just the arithmetical sum of the noted field. */
+			for (i=0; i < map_field->data.checksum.field_length; i++) {
+				checksum+=nvram_read(map_field->data.checksum.field_position+i);
+			}
+			break;
+
+		case CHECKSUM_ALGORITHM_NEGATIVE_SUM:
+		case CHECKSUM_ALGORITHM_NEGATIVE_SHORT_SUM:
+			/* Take the arithmetical sum of the negative of the noted field. */
+			for (i=0; i < map_field->data.checksum.field_length; i++) {
+				checksum-=nvram_read(map_field->data.checksum.field_position+i);
+			}
+			break;
+	}
+
+	/* Return the calculated checksum. */
+	return (checksum & ((1<<(map_field->data.checksum.size * 8))-1));
+}
+
+
+/* Check all checksums in NVRAM. */
+void command_check(int argc, char *argv[], struct list_head *mapping_list)
+{
+	struct list_head *pos;
+	map_field_t      *map_field;
+	unsigned int      argcnt=2;
+	uint16_t          checksum;
+
+	/* Any parameters? */
+	if (argcnt == argc) {
+		/* No. Check all checksums. */
+		/* Go through all map fields. */
+		list_for_each(pos, mapping_list) {
+			/* Get the current field. */
+			map_field=list_entry(pos, map_field_t, list);
+
+			/* Ignore non-checksum fields. */
+			if (map_field->type == MAP_FIELD_TYPE_CHECKSUM) {
+				/* Calculate checksum. Switch by algorithm. */
+				checksum=
+					nvram_read(map_field->data.checksum.position[1])<<8|
+					nvram_read(map_field->data.checksum.position[0]);
+
+				fwprintf(stdout, L"%ls ", map_field->name);
+				if (calculate_checksum(map_field) == checksum) {
+					fwprintf(stdout, L"OK\n");
+				} else {
+					fwprintf(stdout, L"FAIL (0x%08x calculated vs. 0x%08x read)\n", calculate_checksum(map_field), checksum);
+				}
+			}
+		}
+	} else {
+		/* Yes. Go through the remaining parameters. */
+		while (argcnt < argc)
+		{
+			/* Go through all map fields. */
+			list_for_each(pos, mapping_list) {
+				/* Get the current field. */
+				map_field=list_entry(pos, map_field_t, list);
+
+				/* Compare the current identifier with the input string from command line. */
+				if (wcsmbscmp(map_field->name, argv[argcnt]) == 0) {
+
+					/* Found the identifier. */
+					/* Ignore non-checksum fields. */
+					if (map_field->type == MAP_FIELD_TYPE_CHECKSUM) {
+						/* Calculate checksum. Switch by algorithm. */
+						checksum=
+							nvram_read(map_field->data.checksum.position[1])<<8|
+							nvram_read(map_field->data.checksum.position[0]);
+
+						fwprintf(stdout, L"%ls ", map_field->name);
+						if (calculate_checksum(map_field) == checksum) {
+							fwprintf(stdout, L"OK\n");
+						} else {
+							fwprintf(stdout, L"FAIL (0x%08x calculated vs. 0x%08x read)\n", calculate_checksum(map_field), checksum);
+						}
+					}
+				}
+			}
+
+			/* Next identifier. */
+			argcnt++;
+		}
+	}
+}
 
 /* List the available identifiers. */
 void command_list(int argc, char *argv[], struct list_head *mapping_list)
@@ -47,21 +149,44 @@ void command_list(int argc, char *argv[], struct list_head *mapping_list)
 
 		/* Switch by field type. */
 		switch (map_field->type) {
+			case MAP_FIELD_TYPE_CHECKSUM:
+				/* Print checksum field. */
+				fwprintf(stdout, L"checksum %ls %ls ",
+					map_field->name,
+					checksum_algorithms[map_field->data.checksum.algorithm]);
+
+				for (i=0; i < map_field->data.checksum.size; i++) {
+					fwprintf(stdout, L"0x%02x ", map_field->data.checksum.position[i]);
+				}	
+
+				fwprintf(stdout, L"0x%02x %d\n",
+					map_field->data.checksum.field_position,
+					map_field->data.checksum.field_length);
+				break;
+
 			case MAP_FIELD_TYPE_BYTEARRAY:
 				/* Print bytearray field. */
-				fwprintf(stdout, L"bytearray %ls 0x%02x %d\n", map_field->name, map_field->data.bytearray.position, map_field->data.bytearray.length);
+				fwprintf(stdout, L"bytearray %ls 0x%02x %d\n",
+					map_field->name,
+					map_field->data.bytearray.position,
+					map_field->data.bytearray.length);
 				break;
 
 			case MAP_FIELD_TYPE_STRING:
 				/* Print string field. */
-				fwprintf(stdout, L"string %ls 0x%02x %d\n", map_field->name, map_field->data.string.position, map_field->data.string.length);
+				fwprintf(stdout, L"string %ls 0x%02x %d\n",
+					map_field->name,
+					map_field->data.string.position,
+					map_field->data.string.length);
 				break;
 
 			case MAP_FIELD_TYPE_BITFIELD:
 				/* Print bitfield. */
 				fwprintf(stdout, L"bitfield %ls %d ", map_field->name, map_field->data.bitfield.length);
 				for (i=0; i < map_field->data.bitfield.length; i++) {
-					fwprintf(stdout, L"0x%02x:%1d ", map_field->data.bitfield.position[i].byte, map_field->data.bitfield.position[i].bit);
+					fwprintf(stdout, L"0x%02x:%1d ",
+						map_field->data.bitfield.position[i].byte,
+						map_field->data.bitfield.position[i].bit);
 				}
 				for (i=0; i < (1<<map_field->data.bitfield.length); i++) {
 					fwprintf(stdout, L"%ls ", map_field->data.bitfield.values[i]);
@@ -70,8 +195,7 @@ void command_list(int argc, char *argv[], struct list_head *mapping_list)
 				break;
 
 			default:
-				fwprintf(stderr, L"nvram: unknown field type %d for field %ls in configuration.\n", map_field->type, map_field->name);
-				exit(EXIT_FAILURE);
+				fwprintf(stderr, L"nvram: (ignored) unknown field type %d for field %ls in configuration.\n", map_field->type, map_field->name);
 		}
 	}
 }
@@ -88,7 +212,7 @@ void command_get(int argc, char *argv[], struct list_head *mapping_list)
 	unsigned int      bitfield_data;
 
 	/* Go through the remaining parameters. */
-	while (argcnt<argc)
+	while (argcnt < argc)
 	{
 		/* Go through all map fields. */
 		list_for_each(pos, mapping_list) {
@@ -100,6 +224,15 @@ void command_get(int argc, char *argv[], struct list_head *mapping_list)
 				/* Found the identifier. */
 				/* Switch by field type. */
 				switch (map_field->type) {
+					case MAP_FIELD_TYPE_CHECKSUM:
+						/* Print checksum data. */
+						fwprintf(stdout, L"0x");
+						for (i=map_field->data.checksum.size; i > 0; i--) {
+							fwprintf(stdout, L"%02x",nvram_read(map_field->data.checksum.position[i-1]));
+						}
+						fwprintf(stdout, L"\n");
+						break;
+
 					case MAP_FIELD_TYPE_BYTEARRAY:
 						/* Print bytearray data. */
 						for (i=0; i < map_field->data.bytearray.length; i++) {
@@ -157,7 +290,7 @@ void command_set(int argc, char *argv[], struct list_head *mapping_list)
 	unsigned int      bitfield_data;
 
 	/* Go through the remaining parameters. */
-	while (argcnt<argc)
+	while (argcnt < argc)
 	{
 		/* Go through all map fields. */
 		list_for_each(pos, mapping_list) {
@@ -169,6 +302,17 @@ void command_set(int argc, char *argv[], struct list_head *mapping_list)
 				/* Found the identifier. */
 				/* Switch by field type. */
 				switch (map_field->type) {
+					case MAP_FIELD_TYPE_CHECKSUM:
+						/* Get data from command line. */
+						argcnt++;
+						if (argcnt >= argc) {
+							fwprintf(stderr, L"nvram: value for field %ls missing on command line.\n", map_field->name);
+							exit(EXIT_FAILURE);
+						}
+
+						fwprintf(stderr, L"nvram: (ignored) will no write checksum field %ls.\n", map_field->name);
+						break;
+
 					case MAP_FIELD_TYPE_BYTEARRAY:
 						/* Get data from command line. */
 						argcnt++;
@@ -274,8 +418,12 @@ int main(int argc, char *argv[])
 	setlocale(LC_ALL, "");
 #endif
 
+	/* Change directory to nvram configuration. */
+	/* Silently ignore if failing. */
+	chdir(CONFIG_DIRECTORY);
+
 	/* Initialize hardware description. */
-	hardware_description.type=HARDWARE_DESCRIPTION_STANDARD;
+	hardware_description.type=HARDWARE_TYPE_STANDARD;
 
 	/* Detect BIOS, system, and board info. */
 	if (dmi_detect(&hardware_description) == -1) {
@@ -298,9 +446,24 @@ int main(int argc, char *argv[])
 		fwprintf(stdout, L"BIOS vendor: %s\nBIOS version: %s\nBIOS release date: %s\n", hardware_description.bios_vendor, hardware_description.bios_version, hardware_description.bios_release_date);
 		fwprintf(stdout, L"System manufacturer: %s\nSystem productcode: %s\nSystem version: %s\n", hardware_description.system_manufacturer, hardware_description.system_productcode, hardware_description.system_version);
 		fwprintf(stdout, L"Board manufacturer: %s\nBoard productcode: %s\nBoard version: %s\n", hardware_description.board_manufacturer, hardware_description.board_productcode, hardware_description.board_version);
+
+	}	else if (strcmp(argv[1], "check") == 0) {
+		/* Check command. */
+		/* Open NVRAM. */
+		if (nvram_open(hardware_description.type) == -1) {
+			perror("nvram_open");
+			exit(EXIT_FAILURE);
+		}	
+
+		command_check(argc, argv, &nvram_mapping);
+
+		/* Close NVRAM. */
+		nvram_close();
+
 	}	else if (strcmp(argv[1], "list") == 0) {
 		/* List command. */
 		command_list(argc, argv, &nvram_mapping);
+
 	} else if (strcmp(argv[1], "get") == 0) {
 		/* Get command. */
 		/* Open NVRAM. */
@@ -313,6 +476,7 @@ int main(int argc, char *argv[])
 	
 		/* Close NVRAM. */
 		nvram_close();
+
 	}	else if (strcmp(argv[1], "set") == 0) {
 		/* Set command. */
 		/* Open NVRAM. */

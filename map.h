@@ -7,17 +7,28 @@
 /* Maximum number of values per bitfield. */
 #define MAP_BITFIELD_MAX_BITS 5   
 
+/* Maximum number of positions per checksum. */
+#define MAP_CHECKSUM_MAX_POSITIONS 2
+
 /* Field types. */
 #define MAP_FIELD_TYPE_NULL      0
-#define MAP_FIELD_TYPE_BYTEARRAY 1
-#define MAP_FIELD_TYPE_STRING    2
-#define MAP_FIELD_TYPE_BITFIELD  3
+#define MAP_FIELD_TYPE_CHECKSUM  1
+#define MAP_FIELD_TYPE_BYTEARRAY 2
+#define MAP_FIELD_TYPE_STRING    3
+#define MAP_FIELD_TYPE_BITFIELD  4
 
 typedef struct {
 	struct list_head  list;
 	unsigned int      type;
 	wchar_t          *name;
 	union {
+		struct {
+			unsigned int algorithm;
+			unsigned int size;
+			unsigned int position[MAP_CHECKSUM_MAX_POSITIONS];
+			unsigned int field_position;
+			unsigned int field_length;
+		}	checksum;
 		struct {
 			unsigned int position;
 			unsigned int length;
