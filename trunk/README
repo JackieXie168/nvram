@@ -131,7 +131,7 @@ where no further NVRAM exists, and writes are a no-op in such regions. So an
 entry which seems to work may be broken. Take care of this when editing the
 NVRAM configuration!
 
-There are currently three directives for entry types:
+There are currently three directives for field types:
     * bytearray IDENTIFIER POSITION FIELD_SIZE
     * string    IDENTIFIER POSITION FIELD_SIZE
     * bitfield  IDENTIFIER n POSITION_0 .. POSITION_(n-1) VALUE_0 .. VALUE_(2^n)-1
@@ -194,6 +194,22 @@ EXAMPLE: Define two bitfields with the names "floppy_a_type" and "floppy_b_type"
 
 Checksum Directive:
 -------------------
+The checksum directive
+    * checksum IDENTIFIER ALGORITHM POSITION_0 POSITION_(n-1) FIELD_POSITION FIELD_SIZE 
+allows to automatically calculate checksums on write of the NVRAM data. There
+is a command line option which disables automatic checksum calculation and
+writing. That way, one may set the checksum by hand using the "set" command.
+
+****TODO****
+
+Fail Directive:
+---------------
+The fail directive
+    * fail
+immediatly stops configuration scanning and fails with file name and line
+number. This is useful (in conjunction with the "log" directive to warn the
+user about unclear configuration when some "include" directive with wildcards
+did not help to autodetect a certain BIOS or board.
 
 
 Include Directive:
@@ -201,7 +217,7 @@ Include Directive:
 The include directive
     * include FILENAME
 allows to include other configuration files at the point where the include
-directive was given. Includes may be nested. Special character sequences are
+directive was given. Includes may be nested. Special wildcards are
 expanded to information taken from BIOS' DMI table:
     * %bm BIOS vendor
     * %bv BIOS version

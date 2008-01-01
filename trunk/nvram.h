@@ -14,6 +14,12 @@
 #define CHECKSUM_ALGORITHM_NEGATIVE_SUM       2
 #define CHECKSUM_ALGORITHM_NEGATIVE_SHORT_SUM 3
 
+/* Loglevels. */
+#define LOGLEVEL_DEBUG   0
+#define LOGLEVEL_INFO    1
+#define LOGLEVEL_WARNING 2
+#define LOGLEVEL_ERROR   3
+
 /* Maximum NVRAM size. */
 #define NVRAM_SIZE 256
 
