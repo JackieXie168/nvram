@@ -38,7 +38,7 @@ extern wchar_t *checksum_algorithms[];
 
 
 /* Usage message. */
-const wchar_t USAGE[] = L"USAGE: nvram dmi\n       nvram list\n       nvram get identifier [identifier]...\n       nvram set identifier value [identifier value]...\n";
+const wchar_t USAGE[] = L"USAGE: nvram [OPTIONS] probe\n       nvram [OPTIONS] list\n       nvram [OPTIONS] get identifier [identifier]...\n       nvram [OPTIONS] set identifier value [identifier value]...\nOPTIONS are -c (--no-checksum-update), -d (--dry-run), -v (--verbose)\n";
 
 
 /* Calculate a NVRAM checksum. */
@@ -554,11 +554,11 @@ endopt:
 	}
 
 	/* Switch by command. */
-	if (strcmp(settings.argv[0], "dmi") == 0) {
+	if (strcmp(settings.argv[0], "probe") == 0) {
 		/* DMI command */
-		fwprintf(stdout, L"BIOS vendor: %s\nBIOS version: %s\nBIOS release date: %s\n", hardware_description.bios_vendor, hardware_description.bios_version, hardware_description.bios_release_date);
-		fwprintf(stdout, L"System manufacturer: %s\nSystem productcode: %s\nSystem version: %s\n", hardware_description.system_manufacturer, hardware_description.system_productcode, hardware_description.system_version);
-		fwprintf(stdout, L"Board manufacturer: %s\nBoard productcode: %s\nBoard version: %s\n", hardware_description.board_manufacturer, hardware_description.board_productcode, hardware_description.board_version);
+		fwprintf(stdout, L"BIOS vendor: '%s'\nBIOS version: '%s'\nBIOS release date: '%s'\n", hardware_description.bios_vendor, hardware_description.bios_version, hardware_description.bios_release_date);
+		fwprintf(stdout, L"System manufacturer: '%s'\nSystem productcode: '%s'\nSystem version: '%s'\n", hardware_description.system_manufacturer, hardware_description.system_productcode, hardware_description.system_version);
+		fwprintf(stdout, L"Board manufacturer: '%s'\nBoard productcode: '%s'\nBoard version: '%s'\n", hardware_description.board_manufacturer, hardware_description.board_productcode, hardware_description.board_version);
 
 	}	else if (strcmp(settings.argv[0], "check") == 0) {
 		/* Check command. */

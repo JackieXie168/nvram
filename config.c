@@ -36,8 +36,19 @@ wchar_t *checksum_algorithms[] = {
 	L"negative_short",
 	(wchar_t *)NULL };
 
+/* Recognized loglevels. */
+wchar_t *loglevels[] = {
+	L"debug",
+	L"info",
+	L"warning",
+	L"error",
+	(wchar_t *)NULL };
+
 /* Recognized commands. */
 wchar_t *commands[] = {
+	L"or",
+	L"fail",
+	L"log",
 	L"include",
 	L"hardware",
 	L"checksum",
@@ -46,12 +57,15 @@ wchar_t *commands[] = {
 	L"bitfield",
 	(wchar_t *)NULL };
 
-#define COMMAND_KEYWORD_INCLUDE   0
-#define COMMAND_KEYWORD_HARDWARE  1
-#define COMMAND_KEYWORD_CHECKSUM  2
-#define COMMAND_KEYWORD_BYTEARRAY 3
-#define COMMAND_KEYWORD_STRING    4
-#define COMMAND_KEYWORD_BITFIELD  5
+#define COMMAND_KEYWORD_OR        0
+#define COMMAND_KEYWORD_FAIL      1
+#define COMMAND_KEYWORD_LOG       2
+#define COMMAND_KEYWORD_INCLUDE   3
+#define COMMAND_KEYWORD_HARDWARE  4
+#define COMMAND_KEYWORD_CHECKSUM  5
+#define COMMAND_KEYWORD_BYTEARRAY 6
+#define COMMAND_KEYWORD_STRING    7
+#define COMMAND_KEYWORD_BITFIELD  8
 
 
 #define NEXT_TOKEN \
@@ -104,11 +118,12 @@ void read_config(settings_t *settings, struct list_head *token_list, hardware_t 
 	map_field_t      *map_field;
 	int               nesting_level=0;
 	struct list_head *pos, *map_pos;
-	long              position, length, checksum_algorithm, checksum_position_count;
+	long              position, length, checksum_algorithm, checksum_position_count, loglevel;
 	long              i, j, k;
 	long              checksum_position[MAP_CHECKSUM_MAX_POSITIONS];
 	token_t          *token;
 	int               command_keyword;
+	char              include_succeded=0;
 
 	/* Read and tokenize the main config file. */
 	strcpy(config_filename, CONFIG_BASE_FILENAME);
@@ -138,6 +153,48 @@ void read_config(settings_t *settings, struct list_head *token_list, hardware_t 
 		/* This token must be a command keyword. */
 		command_keyword=token_convert_keyword(token, commands);
 		switch (command_keyword) {
+			case COMMAND_KEYWORD_OR:
+				/* Check if the previous include directive succeded. */
+				if (include_succeded) {
+					/* No. Skip all following tokens until line end */
+					NEXT_TOKEN
+					while (token->type != TOKEN_TYPE_EOL) {
+						NEXT_TOKEN
+					}
+				}	
+				break;
+
+			case COMMAND_KEYWORD_FAIL:
+				/* Fail immediately. */
+				fwprintf(stderr, L"nvram: failed in config file %s, line %d.\n", config_filename, token->line);
+				exit(EXIT_FAILURE);
+
+			case COMMAND_KEYWORD_LOG:
+				/* Next token is a loglevel. */
+				NEXT_TOKEN
+				switch (token_convert_keyword(token, loglevels)) {
+					case LOGLEVEL_DEBUG:
+					case LOGLEVEL_INFO:
+					case LOGLEVEL_WARNING:
+					case LOGLEVEL_ERROR:
+						loglevel=token->data.integer_number;
+						break;
+
+					default:
+						fwprintf(stderr, L"nvram: error in config file %s, line %d: not a valid loglevel.\n", config_filename, token->line);
+						exit(EXIT_FAILURE);
+				}
+
+				/* All following tokens form of a message. */
+				NEXT_TOKEN
+				fwprintf(stderr, L"nvram:");
+				while (token->type != TOKEN_TYPE_EOL) {
+					fwprintf(stderr, L" %ls", token->data.string);
+					NEXT_TOKEN
+				}
+				fwprintf(stderr, L"\n");
+				break;
+
 			case COMMAND_KEYWORD_INCLUDE:
 				/* Check nesting level. */
 				if (nesting_level > CONFIG_NESTING_MAX) {
@@ -249,6 +306,10 @@ void read_config(settings_t *settings, struct list_head *token_list, hardware_t 
 
 					/* Next token is the line end. */
 					NEXT_TOKEN
+					EOL_TOKEN
+
+					/* Include failed. */
+					include_succeded=0;
 
 					/* Break switch. */
 					break;
@@ -257,6 +318,7 @@ void read_config(settings_t *settings, struct list_head *token_list, hardware_t 
 
 				/* Next token is the line end. */
 				NEXT_TOKEN
+				EOL_TOKEN
 
 				/* Read included file and add the tokens below this include command. */
 				token_tokenize_stream(config_file, token->list.next);
@@ -266,6 +328,9 @@ void read_config(settings_t *settings, struct list_head *token_list, hardware_t 
 
 				/* Increase nesting level. */
 				nesting_level++;
+
+				/* Include succeded. */
+				include_succeded=1;
 				break;
 
 			case COMMAND_KEYWORD_HARDWARE:
