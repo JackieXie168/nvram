@@ -7,6 +7,6 @@
 
 
 /* Config operations. */
-void read_config(struct list_head *token_list, hardware_t *hardware_description, struct list_head *nvram_mapping);
+void read_config(settings_t *settings, struct list_head *token_list, hardware_t *hardware_description, struct list_head *nvram_mapping);
 
 #endif
