@@ -14,6 +14,9 @@
 #define CHECKSUM_ALGORITHM_NEGATIVE_SUM       2
 #define CHECKSUM_ALGORITHM_NEGATIVE_SHORT_SUM 3
 
+/* Maximum NVRAM size. */
+#define NVRAM_SIZE 256
+
 /* Hardware types. */
 #define HARDWARE_TYPE_STANDARD 0
 #define HARDWARE_TYPE_INTEL    1
@@ -34,5 +37,14 @@ typedef struct {
 	const char *board_productcode;
 	const char *board_version;
 } hardware_t;
+
+/* Settings given in the configuration and/or command line. */
+typedef struct {
+	int    argc;
+	char **argv;
+	char   write_to_nvram;
+	char   update_checksums;
+	char   verbose;
+} settings_t;
 
 #endif

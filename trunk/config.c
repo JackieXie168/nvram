@@ -94,7 +94,7 @@ wchar_t *commands[] = {
 
 
 /* Read config file. */
-void read_config(struct list_head *token_list, hardware_t *hardware_description, struct list_head *nvram_mapping)
+void read_config(settings_t *settings, struct list_head *token_list, hardware_t *hardware_description, struct list_head *nvram_mapping)
 {
 	FILE             *config_file;
 	char              config_filename[CONFIG_PATH_LENGTH_MAX+1];
@@ -242,7 +242,10 @@ void read_config(struct list_head *token_list, hardware_t *hardware_description,
 				included_config_filename[CONFIG_PATH_LENGTH_MAX]='\0';
 
 				if ((config_file=fopen(included_config_filename, "r")) == NULL) {
-					fwprintf(stderr, L"nvram: (ignored) error opening include file %ls noted in config file %s, line %d: %s.\n", filename_buffer, config_filename, token->line, strerror(errno));
+					/* Print ignored error message only if verbose. */
+					if (settings->verbose) {
+						fwprintf(stderr, L"nvram: (ignored) error opening include file %ls noted in config file %s, line %d: %s.\n", filename_buffer, config_filename, token->line, strerror(errno));
+					}	
 
 					/* Next token is the line end. */
 					NEXT_TOKEN

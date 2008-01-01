@@ -50,7 +50,7 @@ within the running OS, automatically by a script even less than ever.
 
 There are some partial solutions to this problem, e.g. the Linux nvram driver,
 which allows to read and write the first 128 byte of nvram through the
-/dev/nvram device node and read some old-tyme (and pesudo-standard) BIOS
+/dev/nvram device node and read some old-tyme (and pseudo-standard) BIOS
 settings from the /proc/driver/nvram pseudofile. But no further semantic
 mapping is done and the checksum has to be calculated by hand.
 
@@ -85,7 +85,7 @@ too.
 As a small bonus, the tended hacker may define *additional* fields in the
 NVRAM e.g. to store settings on a diskless machine. Most PC BIOSes use only
 the first 128 byte of NVRAM and a few bytes above that border -- so there is
-much space for adding application specific variables.
+some space for adding application specific variables.
 
 
 
@@ -97,7 +97,7 @@ revision. I kindly ask you to provide information to extend (or correct) the
 existing configuration files. Please send some basic information -- the output
 of
 
-# nvram party_i_want_to_party
+# nvram probe
 
 -- via email to Jan Kandziora <nvram@kandziora-ing>. No dread, the data you'll
 send doesn't contain your personal data and couldn't be used to track you
@@ -114,9 +114,8 @@ CONFIGURATION
 The nvram utility uses a large number of configuration files. The main
 configuration file is /etc/nvram.conf. There is a directory /etc/nvram.d, where
 additional files for including from the main file are stored. The nvram utility
-changes its current directory to that directory after start, so symlinks
-within /etc/nvram.d may be relative to that directory (usually, the targets are
-just filenames without path components).
+changes its current directory to that directory after start, so includes may be
+relative to that directory.
 
 In each configuration file, the same directives may be used.
 
@@ -153,7 +152,7 @@ EXAMPLE: Define a byte array of 50 bytes named "atbios_data" starting
 Strings:
 ~~~~~~~~
 Strings are stored as (multi-byte) chars in the system encoding and are
-printed as such. If an actual string is shorter than the field size (denoted
+printed as such. If an actual string is shorter than the field size (noted
 by a \0 at the end), only that part of the field contents is printed.
 On set operation, the string may be at most the size of the field. A \0 is
 appended automatically, aside from the case where the field is completely
@@ -230,18 +229,18 @@ The NVRAM type is set with the directive
     * hardware HARDWARE_NAME
 
 HARDWARE_NAME may be
-    * standard (for any compatible RTC -- only 64/128 bytes NVRAM!)
-    * intel    (for Intel ICHx southbridge series, 256 Byte)
-    * via82cxx (for VIA 82Cxx ISA bridge series, 256 Byte)
-    * via823x  (for VIA 823x ISA bridge series, 256 Byte)
-    * ds1685   (for distinct DS1685 RTC chips, 256 Byte)
+    * standard   (for any compatible RTC -- only 64/128 bytes NVRAM!)
+    * intel      (for Intel ICHx southbridge series, 256 Byte)
+    * via82cxx   (for VIA 82Cxx ISA bridge series, 256 Byte)
+    * via823x    (for VIA 823x ISA bridge series, 256 Byte)
+    * ds1685     (for distinct DS1685 RTC chips, 256 Byte)
 
 If no or a wrong hardware directive is given, the extended NVRAM (Bytes 128
 and above) is not accessible.
 
-EXAMPLE: Use via823x (and compatible) hardware access.
+EXAMPLE: Use via82cxx (and compatible) hardware access.
 
-	hardware via823x
+	hardware via82cxx
 
 
 
