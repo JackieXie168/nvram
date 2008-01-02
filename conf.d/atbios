@@ -1,11 +1,22 @@
 ## On an IBM AT, a 50 byte BIOS data area is located at position 0x0E.
-## Some of the fields are standard to all AT BIOS's, some depend on
-## the actual BIOS version.
-bytearray atbios_data 14 50
+## The following fields from that area are a "de facto" standard to all
+## PC's BIOS.
 
-## Floppy fields. 
-bitfield floppy_a_type 3 0x10:4 0x10:5 0x10:6 none 360KB 1.2MB 720KB 1.44MB 2.88MB invalid invalid
-bitfield floppy_b_type 3 0x10:0 0x10:1 0x10:2 none 360KB 1.2MB 720KB 1.44MB 2.88MB invalid invalid
+## Floppy A and B type, floppy count (at least one!)
+bitfield floppy_a_type 4 0x10:4 0x10:5 0x10:6 0x10:7 none 360KB 1.2MB 720KB 1.44MB 2.88MB invalid invalid invalid invalid invalid invalid invalid invalid invalid invalid
+bitfield floppy_b_type 4 0x10:0 0x10:1 0x10:2 0x10:3 none 360KB 1.2MB 720KB 1.44MB 2.88MB invalid invalid invalid invalid invalid invalid invalid invalid invalid invalid 
+bitfield floppy_count 2 0x14:6 0x14:7 1 2 3 4
 
-## Checksum.
+## Display adaptor.
+bitfield display_adaptor_type 2 0x14:5 0x14:6 EGA/VGA CGA40 CGA80 MDA
+
+## Halt on...
+bitfield halt_on_display_failed  1 0x14:3 no yes
+bitfield halt_on_keyboard_failed 1 0x14:2 no yes
+bitfield halt_on_floppy_failed   1 0x14:0 no yes
+
+## Math coprocessor.
+bitfield math_coprocessor_installed 1 0x14:1 no yes
+
+## Checksum for AT BIOS fields.
 checksum atbios_checksum standard 0x2f 0x2e 0x10 0x1d

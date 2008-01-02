@@ -46,6 +46,9 @@ wchar_t *loglevels[] = {
 
 /* Recognized commands. */
 wchar_t *commands[] = {
+	L"{",
+	L"}",
+	L"break",
 	L"or",
 	L"fail",
 	L"log",
@@ -57,21 +60,24 @@ wchar_t *commands[] = {
 	L"bitfield",
 	(wchar_t *)NULL };
 
-#define COMMAND_KEYWORD_OR        0
-#define COMMAND_KEYWORD_FAIL      1
-#define COMMAND_KEYWORD_LOG       2
-#define COMMAND_KEYWORD_INCLUDE   3
-#define COMMAND_KEYWORD_HARDWARE  4
-#define COMMAND_KEYWORD_CHECKSUM  5
-#define COMMAND_KEYWORD_BYTEARRAY 6
-#define COMMAND_KEYWORD_STRING    7
-#define COMMAND_KEYWORD_BITFIELD  8
+#define COMMAND_KEYWORD_BLOCK_START  0
+#define COMMAND_KEYWORD_BLOCK_END    1
+#define COMMAND_KEYWORD_BREAK        2
+#define COMMAND_KEYWORD_OR           3
+#define COMMAND_KEYWORD_FAIL         4
+#define COMMAND_KEYWORD_LOG          5
+#define COMMAND_KEYWORD_INCLUDE      6
+#define COMMAND_KEYWORD_HARDWARE     7
+#define COMMAND_KEYWORD_CHECKSUM     8
+#define COMMAND_KEYWORD_BYTEARRAY    9
+#define COMMAND_KEYWORD_STRING      10
+#define COMMAND_KEYWORD_BITFIELD    11
 
 
 #define NEXT_TOKEN \
  	pos = pos->next; \
 	if (pos == token_list) { \
-		fwprintf(stderr, L"nvram: error in config file %s, line %d: incomplete statement.\n", config_filename, token->line);\
+		fwprintf(stderr, L"nvram: error in config file %s, line %d: incomplete statement.\n", config_filename, token->line); \
 		exit(EXIT_FAILURE); \
 	} \
 	token=list_entry(pos, token_t, list);
@@ -106,6 +112,8 @@ wchar_t *commands[] = {
 	fwprintf(stderr, L"nvram: error in config file %s, line %d: invalid escape sequence in config file name.\n", config_filename, token->line); \
 	exit(EXIT_FAILURE);
 
+#define STATUS_FAILED  status=0;
+#define STATUS_SUCCESS status=1;
 
 /* Read config file. */
 void read_config(settings_t *settings, struct list_head *token_list, hardware_t *hardware_description, struct list_head *nvram_mapping)
@@ -116,14 +124,14 @@ void read_config(settings_t *settings, struct list_head *token_list, hardware_t 
 	char              included_config_filename[CONFIG_PATH_LENGTH_MAX+1];
 	wchar_t           filename_buffer[CONFIG_PATH_LENGTH_MAX+1];
 	map_field_t      *map_field;
-	int               nesting_level=0;
+	int               block_level, block_nesting_level=0, include_nesting_level=0;
 	struct list_head *pos, *map_pos;
 	long              position, length, checksum_algorithm, checksum_position_count, loglevel;
 	long              i, j, k;
 	long              checksum_position[MAP_CHECKSUM_MAX_POSITIONS];
 	token_t          *token;
 	int               command_keyword;
-	char              include_succeded=0;
+	char              status=0;
 
 	/* Read and tokenize the main config file. */
 	strcpy(config_filename, CONFIG_BASE_FILENAME);
@@ -143,7 +151,7 @@ void read_config(settings_t *settings, struct list_head *token_list, hardware_t 
 		/* Check for EOF (e.g. from an included file) */
 		if (token->type == TOKEN_TYPE_EOF) {
 			/* Decrease nesting level. */
-			nesting_level--;
+			include_nesting_level--;
 
 			/* Next token. */
   		pos = pos->next;
@@ -151,15 +159,100 @@ void read_config(settings_t *settings, struct list_head *token_list, hardware_t 
 		}	
 
 		/* This token must be a command keyword. */
-		command_keyword=token_convert_keyword(token, commands);
-		switch (command_keyword) {
+		switch (command_keyword=token_convert_keyword(token, commands)) {
+			case COMMAND_KEYWORD_BLOCK_START:
+				/* Increase block nesting level. */
+				block_nesting_level++;
+
+				/* Next token is the line end. */
+				NEXT_TOKEN
+				EOL_TOKEN
+
+				/* Command succeded. */
+				STATUS_SUCCESS
+				break;
+
+			case COMMAND_KEYWORD_BLOCK_END:
+				/* Decrease block nesting level. */
+				block_nesting_level--;
+
+				/* Fail if more blocks were closed than opened. */
+				if (block_nesting_level < 0) {
+					fwprintf(stderr, L"nvram: error in config file %s, line %d: unbalanced }.\n", config_filename, token->line);
+					exit(EXIT_FAILURE);
+				}
+
+				/* Next token is the line end. */
+				NEXT_TOKEN
+				EOL_TOKEN
+				break;
+
+			case COMMAND_KEYWORD_BREAK:
+				/* Next token is the line end. */
+				NEXT_TOKEN
+				EOL_TOKEN
+				
+				/* Skip all following tokens until block end of the same level. */
+				block_level=1;
+				do {
+					NEXT_TOKEN
+					if (token->type == TOKEN_TYPE_STRING) {
+						switch (token_convert_keyword(token, commands)) {
+							case COMMAND_KEYWORD_BLOCK_START:
+								block_level++;
+								break;
+
+							case COMMAND_KEYWORD_BLOCK_END:
+								block_level--;
+								break;
+						}
+					}	
+				} while (block_level);
+
+				/* Next token is the line end. */
+				NEXT_TOKEN
+				EOL_TOKEN
+
+				/* Break command succeeded, but this implies the block with break failed. */
+				STATUS_FAILED
+				break;
+
 			case COMMAND_KEYWORD_OR:
 				/* Check if the previous include directive succeded. */
-				if (include_succeded) {
-					/* No. Skip all following tokens until line end */
+				if (status) {
+					/* Yes. Get the next token. This is a command. */
 					NEXT_TOKEN
-					while (token->type != TOKEN_TYPE_EOL) {
+					NOT_EOL_TOKEN
+
+					/* Check if next command is a block start. */
+					if (token_convert_keyword(token, commands) != COMMAND_KEYWORD_BLOCK_START) {
+						/* No. Skip all following tokens until line end */
+						do {
+							NEXT_TOKEN
+						} while (token->type != TOKEN_TYPE_EOL);
+
+						/* Next token is the next command. */
+					} else {
+						/* Yes. Skip all following tokens until block end of the same level. */
+						block_level=1;
+						do {
+							NEXT_TOKEN
+							if (token->type == TOKEN_TYPE_STRING) {
+								switch (token_convert_keyword(token, commands)) {
+									case COMMAND_KEYWORD_BLOCK_START:
+										block_level++;
+										break;
+
+									case COMMAND_KEYWORD_BLOCK_END:
+										block_level--;
+										break;
+								}
+							}	
+						} while (block_level);
+
+						/* Next token is the line end. */
 						NEXT_TOKEN
+						EOL_TOKEN
 					}
 				}	
 				break;
@@ -193,11 +286,14 @@ void read_config(settings_t *settings, struct list_head *token_list, hardware_t 
 					NEXT_TOKEN
 				}
 				fwprintf(stderr, L"\n");
+
+				/* Command succeded. */
+				STATUS_SUCCESS
 				break;
 
 			case COMMAND_KEYWORD_INCLUDE:
 				/* Check nesting level. */
-				if (nesting_level > CONFIG_NESTING_MAX) {
+				if (include_nesting_level > CONFIG_NESTING_MAX) {
 					fwprintf(stderr, L"nvram: maximum nesting level reached in config file %s, line %d. Maybe a loop?\n", config_filename, token->line);
 					exit(EXIT_FAILURE);
 				}
@@ -308,8 +404,8 @@ void read_config(settings_t *settings, struct list_head *token_list, hardware_t 
 					NEXT_TOKEN
 					EOL_TOKEN
 
-					/* Include failed. */
-					include_succeded=0;
+					/* Command failed. */
+					STATUS_FAILED
 
 					/* Break switch. */
 					break;
@@ -327,10 +423,10 @@ void read_config(settings_t *settings, struct list_head *token_list, hardware_t 
 				fclose(config_file);
 
 				/* Increase nesting level. */
-				nesting_level++;
+				include_nesting_level++;
 
-				/* Include succeded. */
-				include_succeded=1;
+				/* Command succeded. */
+				STATUS_SUCCESS
 				break;
 
 			case COMMAND_KEYWORD_HARDWARE:
@@ -353,6 +449,9 @@ void read_config(settings_t *settings, struct list_head *token_list, hardware_t 
 				/* Next token is the line end. */
 				NEXT_TOKEN
 				EOL_TOKEN
+
+				/* Command succeded. */
+				STATUS_SUCCESS
 				break;
 
 			/* All field commands start the same way. */
@@ -446,6 +545,9 @@ void read_config(settings_t *settings, struct list_head *token_list, hardware_t 
 				/* Next token is the line end. */
 				NEXT_TOKEN
 				EOL_TOKEN
+
+				/* Command succeded. */
+				STATUS_SUCCESS
 				break;
 
 			case COMMAND_KEYWORD_BYTEARRAY:
@@ -475,6 +577,9 @@ void read_config(settings_t *settings, struct list_head *token_list, hardware_t 
 				/* Next token is the line end. */
 				NEXT_TOKEN
 				EOL_TOKEN
+
+				/* Command succeded. */
+				STATUS_SUCCESS
 				break;
 
 			case COMMAND_KEYWORD_STRING:
@@ -504,6 +609,9 @@ void read_config(settings_t *settings, struct list_head *token_list, hardware_t 
 				/* Next token is the line end. */
 				NEXT_TOKEN
 				EOL_TOKEN
+
+				/* Command succeded. */
+				STATUS_SUCCESS
 				break;
 
 			case COMMAND_KEYWORD_BITFIELD:
@@ -559,11 +667,20 @@ void read_config(settings_t *settings, struct list_head *token_list, hardware_t 
 				/* Next token is the line end. */
 				NEXT_TOKEN
 				EOL_TOKEN
+
+				/* Command succeded. */
+				STATUS_SUCCESS
 				break;
 		}
 
 		/* Next token. */
   	pos = pos->next;
+	}
+
+	/* Fail if more blocks were opened than closed. */
+	if (block_nesting_level > 0) {
+		fwprintf(stderr, L"nvram: error in config file(s): unbalanced {.\n", config_filename, token->line);
+		exit(EXIT_FAILURE);
 	}
 
 #ifdef DEBUG
