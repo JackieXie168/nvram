@@ -117,7 +117,55 @@ additional files for including from the main file are stored. The nvram utility
 changes its current directory to that directory after start, so includes may be
 relative to that directory.
 
-In each configuration file, the same directives may be used.
+In all configuration files, each of the directives may be used.
+
+
+Braces Directives:
+------------------
+"{" and "}" form block statements out of directives. They are most useful in
+conjunction with conditionals like "or". Both braces are distinct commands and
+no other command may follow on the same line. Braces may nest and may be
+opened in one configuration file and being closed in another -- however, at
+the end of configuration scanning, all braces must be balanced. 
+
+EXAMPLE: See at "or" directive.
+
+
+Break 
+Checksum Directive:
+-------------------
+The checksum directive
+    * checksum IDENTIFIER ALGORITHM POSITION_0 [POSITION_1] FIELD_POSITION FIELD_SIZE 
+allows to test and automatically calculate checksums on write of the NVRAM
+data. There is a command line option which disables automatic checksum
+calculation and writing. That way, one may set the checksum by hand using the
+"set" command.
+
+ALGORITHM has to be one of
+    * standard       (just a 16-Bit arithmetical sum)
+		* short          (a 8-Bit arithmetical sum)
+		* negative_sum   (a 16-Bit sum of 2's complement of values)
+		* negative_short (a 8-Bit sum of 2's complement of values)
+
+POSITION_0 is the position of the low byte of the checksum.
+POSITION_1 is needed for standard and negative_sum algorithm and stores the
+  high byte of the checksum
+FIELD_POSITION gives the starting address of the field to get a checksum of.
+FIELD_SIZE gives the size of the field in bytes to get a checksum of.
+
+EXAMPLE: Define a standard checksum for the AT BIOS fields (0x10..0x2d).
+
+	checksum atbios_checksum standard 0x2f 0x2e 0x10 0x1d
+
+
+Fail Directive:
+---------------
+The fail directive
+    * fail
+immediatly stops configuration scanning and fails with file name and line
+number. This is useful in conjunction with the "log" directive to warn the
+user about unclear configuration when some "include" directive with wildcards
+did not help to autodetect a certain BIOS or board.
 
 
 Field type directives:
@@ -192,26 +240,6 @@ EXAMPLE: Define two bitfields with the names "floppy_a_type" and "floppy_b_type"
 	bitfield floppy_b_type 3 0x10:0 0x10:1 0x10:2 none 360KB 1.2MB 720KB 1.44MB 2.88MB invalid invalid
 
 
-Checksum Directive:
--------------------
-The checksum directive
-    * checksum IDENTIFIER ALGORITHM POSITION_0 POSITION_(n-1) FIELD_POSITION FIELD_SIZE 
-allows to automatically calculate checksums on write of the NVRAM data. There
-is a command line option which disables automatic checksum calculation and
-writing. That way, one may set the checksum by hand using the "set" command.
-
-****TODO****
-
-Fail Directive:
----------------
-The fail directive
-    * fail
-immediatly stops configuration scanning and fails with file name and line
-number. This is useful (in conjunction with the "log" directive to warn the
-user about unclear configuration when some "include" directive with wildcards
-did not help to autodetect a certain BIOS or board.
-
-
 Include Directive:
 ------------------
 The include directive
@@ -237,6 +265,45 @@ EXAMPLES: Include the correct hardware directive.
 
 	include %sm:%sp
 	include %bm:%bv
+
+
+Log Directive:
+--------------
+The log directive
+    * log LEVEL MESSAGE0..MESSAGEn
+immediately prints a message to stderr whenever the LEVEL, which may be one of
+    * debug
+		* info
+		* warning
+		* error
+is equal or higher than the loglevel requested on command line. By default,
+only errors and warnings are reported. The --verbose command line option turns
+on "info" messages, --debug turns on "debug" messages, too. The command line
+option --quiet turns off warnings, too. "Error" messages may only be
+suppressed by redirecting stderr to /dev/null.
+
+
+Or Directive:
+-------------
+The "or" directive is leading a conditional statement. Any directive following
+the "or" directive will only be executed if the directive before *failed*. The
+"or" directive itself and the closing brace do not alter the FAIL/OK status,
+all other directives do.
+
+LIMITATIONS: So far, the only directives which may fail are
+		* break   -- always marks the block it is issued in as failed.
+    * include -- when file open fail.
+
+EXAMPLE: Include from the first readable file in the list.
+
+	include hardware/%mm:%mp
+	or include hardware/%mm:%sp
+	or include hardware/%sm:%mp
+	or include hardware/%sm:%sp
+	or {
+		log error did not found any hardware description matching the installed motherboard.
+		fail
+	}	
 
 
 Hardware directive:
