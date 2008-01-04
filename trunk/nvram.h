@@ -50,7 +50,7 @@ typedef struct {
 	char **argv;
 	char   write_to_nvram;
 	char   update_checksums;
-	char   verbose;
+	char   loglevel;
 } settings_t;
 
 #endif

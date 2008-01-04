@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/file.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -38,7 +39,7 @@ extern wchar_t *checksum_algorithms[];
 
 
 /* Usage message. */
-const wchar_t USAGE[] = L"USAGE: nvram [OPTIONS] probe\n       nvram [OPTIONS] list\n       nvram [OPTIONS] get identifier [identifier]...\n       nvram [OPTIONS] set identifier value [identifier value]...\nOPTIONS are -c (--no-checksum-update), -d (--dry-run), -v (--verbose)\n";
+const wchar_t USAGE[] = L"USAGE: nvram [OPTIONS] probe\n       nvram [OPTIONS] list\n       nvram [OPTIONS] get identifier [identifier]...\n       nvram [OPTIONS] set identifier value [identifier value]...\nOPTIONS are -c (--no-checksum-update), -d (--dry-run), -v (--verbose), -q (--quiet), --debug\n";
 
 
 /* Calculate a NVRAM checksum. */
@@ -215,7 +216,7 @@ void command_list(settings_t *settings, struct list_head *mapping_list)
 
 			default:
 				/* Print ignored error message only if verbose. */
-				if (settings->verbose) {
+				if (settings->loglevel <= LOGLEVEL_INFO) {
 					fwprintf(stderr, L"nvram: (ignored) unknown field type %d for field %ls in configuration.\n", map_field->type, map_field->name);
 				}
 		}
@@ -348,7 +349,7 @@ void command_set(settings_t *settings, struct list_head *mapping_list)
 						}
 
 						/* Print ignored error message only if verbose. */
-						if (settings->verbose) {
+						if (settings->loglevel <= LOGLEVEL_INFO) {
 							fwprintf(stderr, L"nvram: (ignored) will no write checksum field %ls.\n", map_field->name);
 						}	
 						break;
@@ -485,18 +486,31 @@ int main(int argc, char *argv[])
 	LIST_HEAD(nvram_mapping);
 	hardware_t hardware_description;
 	settings_t settings;
+	int nvram_fd;
 	int option_index;
 	static struct option long_options[] = {
 		{"no-checksum-update", 0, 0, 'c'},
 		{"dry-run", 0, 0, 'd'},
 		{"verbose", 0, 0, 'v'},
+		{"quiet", 0, 0, 'q'},
+		{"debug", 0, 0, 'g'},
 		{0, 0, 0, 0}
 	};
 
 	/* Setup defaults. */
 	settings.write_to_nvram=1;
 	settings.update_checksums=1;
-	settings.verbose=0;
+	settings.loglevel=LOGLEVEL_WARNING;
+
+	/* Lock the nvram utility against multiple invocation. */
+	if ((nvram_fd=open(argv[0], O_RDONLY)) == -1) {
+		perror("main, open nvram_util");
+		exit(EXIT_FAILURE);
+	}
+	if (flock(nvram_fd, LOCK_EX) == -1) {
+		perror("main, flock nvram_util");
+		exit(EXIT_FAILURE);
+	}
 
 #ifdef HAS_LOCALE
 	/* Use system locale instead of "C". */
@@ -505,7 +519,7 @@ int main(int argc, char *argv[])
 
 	/* Parse command line options. */
 	for (;;) {
-		switch (getopt_long(argc, argv, "cdv", long_options, &option_index)) {
+		switch (getopt_long(argc, argv, "cdvq", long_options, &option_index)) {
 			case 'c':
 				settings.update_checksums=0;
 				break;
@@ -515,7 +529,15 @@ int main(int argc, char *argv[])
 				break;
 
 			case 'v':
-				settings.verbose=1;
+				settings.loglevel=LOGLEVEL_INFO;
+				break;
+
+			case 'g':
+				settings.loglevel=LOGLEVEL_DEBUG;
+				break;
+
+			case 'q':
+				settings.loglevel=LOGLEVEL_ERROR;
 				break;
 
 			case '?':
