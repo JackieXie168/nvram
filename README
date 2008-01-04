@@ -99,7 +99,7 @@ of
 
 # nvram probe
 
--- via email to Jan Kandziora <nvram@kandziora-ing>. No dread, the data you'll
+via email to Jan Kandziora <nvram@kandziora-ing>. No dread, the data you'll
 send doesn't contain your personal data and couldn't be used to track you
 through the internet (plus: I won't do it, even if I could). It's just the
 whole nvram contents of your computer (at most 256 valid bytes) along with
@@ -120,6 +120,25 @@ relative to that directory.
 In all configuration files, each of the directives may be used.
 
 
+"And" Directive:
+----------------
+The "and" directive is leading a conditional statement. Any directive following
+the "and" directive will only be executed if the directive before *succeded*.
+The "and" directive itself, the "or" directive and the closing brace do not
+alter the FAIL/OK status, all other directives do.
+
+LIMITATIONS: So far, the only directives which may fail are
+		* break   -- always marks the block it is issued in as failed.
+    * include -- when file open fails.
+		* log     -- when the loglevel does not allow to print a message.
+
+EXAMPLES: Include some files, log if all succeeded.
+
+	include hardware/%mm:%mp
+	and include %bm:%bv:%br
+	and log info All loaded! OK!
+
+
 Braces Directives:
 ------------------
 "{" and "}" form block statements out of directives. They are most useful in
@@ -131,7 +150,29 @@ the end of configuration scanning, all braces must be balanced.
 EXAMPLE: See at "or" directive.
 
 
-Break 
+Break and Continue Directives:
+------------------------------
+Both "break" and continue let the control flow leave the current block
+immediately. The difference is the exit status. While "break" always reports 
+a failed block, "continue" always reports a succeded block. This is important
+if a conditional (e.g "or") follows a block.
+
+EXAMPLE: Load some include file_a and a *dependend* file_b *or* a file_c with
+         a warning instead.
+
+	{
+		include file_a
+		or break
+		include file_b
+	}
+	or {
+		log info could not load file_a and file_b, loading file_c instead
+		include file_c
+	}
+
+NOTE: Most of such constructions may be rewritten using the conditional "and".
+
+
 Checksum Directive:
 -------------------
 The checksum directive
@@ -166,6 +207,10 @@ immediatly stops configuration scanning and fails with file name and line
 number. This is useful in conjunction with the "log" directive to warn the
 user about unclear configuration when some "include" directive with wildcards
 did not help to autodetect a certain BIOS or board.
+
+EXAMPLE: You don't really need one, eh? Ok, here it is:
+
+	fail
 
 
 Field type directives:
@@ -283,16 +328,17 @@ option --quiet turns off warnings, too. "Error" messages may only be
 suppressed by redirecting stderr to /dev/null.
 
 
-Or Directive:
--------------
+"Or" Directive:
+---------------
 The "or" directive is leading a conditional statement. Any directive following
 the "or" directive will only be executed if the directive before *failed*. The
-"or" directive itself and the closing brace do not alter the FAIL/OK status,
-all other directives do.
+"or" directive itself, the "and" directive and the closing brace do not alter
+the FAIL/OK status, all other directives do.
 
 LIMITATIONS: So far, the only directives which may fail are
 		* break   -- always marks the block it is issued in as failed.
     * include -- when file open fail.
+		* log     -- when the loglevel does not allow to print a message.
 
 EXAMPLE: Include from the first readable file in the list.
 
@@ -329,6 +375,27 @@ EXAMPLE: Use via82cxx (and compatible) hardware access.
 
 INVOCATION
 ==========
+Once the configuration files are properly done, root (and only root) may
+invocate the nvram utility. Don't even dare to set up this utility as SUID!
+An arbitrary user may prevent the computer from working properly from next
+reboot on.
+
+In addition, due to limitations from the hardware, it is impossible to access
+the nvram in an atomic operation, so multiple programs accessing the nvram may,
+no, *will* fail and leave the nvram in an undefined state. This applies even
+for just reading the NVRAM (on the DS1685 NVRAM) and for concurrent access by
+both this utility and the kernel's nvram driver.
+
+The nvram utility locks itself against simultaneous invocation (it waits), but
+this doesn't apply to the kernel driver or external programs like nvram-wakeup.
+It's up to you to prevent the different utilities crossing their ways. Unload
+the kernel's nvram driver if possible. Don't let anyone else than root control
+nvram-wakeup (not even indirectly!) without getting an exclusive lock on this
+nvram utility's binary first.
+
+YOU HAVE BEEN WARNED -- BE CAREFUL!
+
+
 
 
 
