@@ -5,6 +5,8 @@
  * 
  */
 
+#define CVS_VERSION "$Id$"
+
 #define _GNU_SOURCE
 
 #ifdef HAS_LOCALE
@@ -39,7 +41,21 @@ extern wchar_t *checksum_algorithms[];
 
 
 /* Usage message. */
-const wchar_t USAGE[] = L"USAGE: nvram [OPTIONS] probe\n       nvram [OPTIONS] list\n       nvram [OPTIONS] get identifier [identifier]...\n       nvram [OPTIONS] set identifier value [identifier value]...\nOPTIONS are -c (--no-checksum-update), -d (--dry-run), -v (--verbose), -q (--quiet), --debug\n";
+const wchar_t USAGE[] = L"USAGE: nvram [OPTIONS] probe\n"
+"  nvram [OPTIONS] list\n"
+"  nvram [OPTIONS] get identifier [identifier]...\n"
+"  nvram [OPTIONS] set identifier value [identifier value]...\n"
+"OPTIONS are\n"
+"  --no-checksum-update (-c) -- NVRAM checksums will not be updated automatically\n"
+"  --dry-run            (-d) -- no changes are actually written to NVRAM\n"
+"  --verbose            (-v) -- raise log level so informational messages are printed\n"
+"  --debug                   -- raise log level so informational and debug messages are printed\n"
+"  --quiet              (-q) -- lower log level so only errors are printed\n"
+"  --help                    -- Show this help\n"
+"  --version                 -- Show version number and exit\n";
+
+/* Version message. */
+const wchar_t VERSION[] = L"nvram 0.1\n";
 
 
 /* Calculate a NVRAM checksum. */
@@ -489,11 +505,13 @@ int main(int argc, char *argv[])
 	int nvram_fd;
 	int option_index;
 	static struct option long_options[] = {
+		{"help", 0, 0, '?'},
 		{"no-checksum-update", 0, 0, 'c'},
 		{"dry-run", 0, 0, 'd'},
 		{"verbose", 0, 0, 'v'},
 		{"quiet", 0, 0, 'q'},
 		{"debug", 0, 0, 'g'},
+		{"version", 0, 0, 'y'},
 		{0, 0, 0, 0}
 	};
 
@@ -539,6 +557,10 @@ int main(int argc, char *argv[])
 			case 'q':
 				settings.loglevel=LOGLEVEL_ERROR;
 				break;
+
+			case 'y':
+				fwprintf(stderr, VERSION);
+				exit(EXIT_FAILURE);
 
 			case '?':
 				fwprintf(stderr, USAGE);
