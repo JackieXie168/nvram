@@ -48,6 +48,7 @@ int nvram_open(int nvram_type_arg)
 	/* Initialize NVRAM cache. */
 	memset(&nvram_cache, 0, sizeof(nvram_cache));
 
+	/* Initialization OK. */
 	return 0;
 }
 
@@ -55,6 +56,14 @@ int nvram_open(int nvram_type_arg)
 /* Release access to nvram. */
 int nvram_close(void)
 {
+	/* Switch bank to 0 if neccessary. */
+	if ((nvram_register_a & 0x10)) {
+		nvram_register_a &= 0xef;
+		outb(0x0a,0x70);
+		outb(nvram_register_a,0x71);
+	}
+
+	/* Release permissions to access the nvram. */
 	return (ioperm(0x70,6,0));
 }
 
