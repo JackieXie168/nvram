@@ -44,6 +44,7 @@ extern wchar_t *checksum_algorithms[];
 const wchar_t USAGE[] = L"USAGE: nvram [OPTIONS] <COMMAND> [PARAMETERS]\n"
 "OPTIONS are\n"
 "  --no-checksum-update (-c) -- NVRAM checksums will not be updated automatically\n"
+"  --raw-dmi                 -- don't \"cook\" data in DMI fields before using\n"
 "  --dry-run            (-d) -- no changes are actually written to NVRAM\n"
 "  --verbose            (-v) -- raise log level so informational messages are printed\n"
 "  --debug                   -- raise log level so informational and debug messages are printed\n"
@@ -504,6 +505,7 @@ int main(int argc, char *argv[])
 	LIST_HEAD(nvram_mapping);
 	hardware_t hardware_description;
 	settings_t settings;
+	int i;
 	int nvram_fd;
 	int option_index;
 	static struct option long_options[] = {
@@ -607,10 +609,86 @@ endopt:
 
 	/* Switch by command. */
 	if (strcmp(settings.argv[0], "probe") == 0) {
-		/* DMI command */
+		/* DMI command. */
+
+		/* Print DMI fields. */
 		fwprintf(stdout, L"BIOS vendor: '%s'\nBIOS version: '%s'\nBIOS release date: '%s'\n", hardware_description.bios_vendor, hardware_description.bios_version, hardware_description.bios_release_date);
 		fwprintf(stdout, L"System manufacturer: '%s'\nSystem productcode: '%s'\nSystem version: '%s'\n", hardware_description.system_manufacturer, hardware_description.system_productcode, hardware_description.system_version);
 		fwprintf(stdout, L"Board manufacturer: '%s'\nBoard productcode: '%s'\nBoard version: '%s'\n", hardware_description.board_manufacturer, hardware_description.board_productcode, hardware_description.board_version);
+
+		/* Read first 128 bytes of NVRAM. */
+		/* Open NVRAM. */
+		if (nvram_open(HARDWARE_TYPE_STANDARD) == -1) {
+			perror("nvram_open");
+			exit(EXIT_FAILURE);
+		}
+
+		fwprintf(stdout, L"Standard NVRAM (0..127):");
+		for (i=0; i<128; i++) fwprintf(stdout, L" %02x", nvram_read(i));
+		fwprintf(stdout, L"\n");
+
+		/* Close NVRAM. */
+		nvram_close();
+
+
+		/* Try to read extended NVRAM data, Intel type. */
+		/* Open NVRAM. */
+		if (nvram_open(HARDWARE_TYPE_INTEL) == -1) {
+			perror("nvram_open");
+			exit(EXIT_FAILURE);
+		}
+
+		fwprintf(stdout, L"Extended NVRAM (intel, 128..255):");
+		for (i=128; i<256; i++) fwprintf(stdout, L" %02x", nvram_read(i));
+		fwprintf(stdout, L"\n");
+
+		/* Close NVRAM. */
+		nvram_close();
+
+
+		/* Try to read extended NVRAM data, VIA82Cxx type. */
+		/* Open NVRAM. */
+		if (nvram_open(HARDWARE_TYPE_VIA82Cxx) == -1) {
+			perror("nvram_open");
+			exit(EXIT_FAILURE);
+		}
+
+		fwprintf(stdout, L"Extended NVRAM (via82cxx, 128..255):");
+		for (i=128; i<256; i++) fwprintf(stdout, L" %02x", nvram_read(i));
+		fwprintf(stdout, L"\n");
+
+		/* Close NVRAM. */
+		nvram_close();
+
+
+		/* Try to read extended NVRAM data, VIA823x type. */
+		/* Open NVRAM. */
+		if (nvram_open(HARDWARE_TYPE_VIA823x) == -1) {
+			perror("nvram_open");
+			exit(EXIT_FAILURE);
+		}
+
+		fwprintf(stdout, L"Extended NVRAM (via823x, 128..255):");
+		for (i=128; i<256; i++) fwprintf(stdout, L" %02x", nvram_read(i));
+		fwprintf(stdout, L"\n");
+
+		/* Close NVRAM. */
+		nvram_close();
+
+
+		/* Try to read extended NVRAM data, DS1685 type. */
+		/* Open NVRAM. */
+		if (nvram_open(HARDWARE_TYPE_DS1685) == -1) {
+			perror("nvram_open");
+			exit(EXIT_FAILURE);
+		}
+
+		fwprintf(stdout, L"Extended NVRAM (ds1685, 128..255):");
+		for (i=128; i<256; i++) fwprintf(stdout, L" %02x", nvram_read(i));
+		fwprintf(stdout, L"\n");
+
+		/* Close NVRAM. */
+		nvram_close();
 
 	}	else if (strcmp(settings.argv[0], "check") == 0) {
 		/* Check command. */

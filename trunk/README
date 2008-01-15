@@ -97,7 +97,7 @@ revision. I kindly ask you to provide information to extend (or correct) the
 existing configuration files. Please send some basic information -- the output
 of
 
-# nvram probe
+# nvram --raw-dmi probe
 
 via email to Jan Kandziora <nvram@kandziora-ing>. No dread, the data you'll
 send doesn't contain your personal data and couldn't be used to track you
@@ -128,15 +128,15 @@ The "and" directive itself, the "or" directive and the closing brace do not
 alter the FAIL/OK status, all other directives do.
 
 LIMITATIONS: So far, the only directives which may fail are
-		* break   -- always marks the block it is issued in as failed.
+    * break   -- always marks the block it is issued in as failed.
     * include -- when file open fails.
-		* log     -- when the loglevel does not allow to print a message.
+    * log     -- when the loglevel does not allow to print a message.
 
 EXAMPLES: Include some files, log if all succeeded.
 
-	include hardware/%mm:%mp
-	and include %bm:%bv:%br
-	and log info All loaded! OK!
+    include hardware/%mm:%mp
+    and include %bm:%bv:%br
+    and log info All loaded! OK!
 
 
 Braces Directives:
@@ -160,15 +160,15 @@ if a conditional (e.g "or") follows a block.
 EXAMPLE: Load some include file_a and a *dependend* file_b *or* a file_c with
          a warning instead.
 
-	{
-		include file_a
-		or break
-		include file_b
-	}
-	or {
-		log info could not load file_a and file_b, loading file_c instead
-		include file_c
-	}
+    {
+        include file_a
+        or break
+        include file_b
+    }
+    or {
+        log info could not load file_a and file_b, loading file_c instead
+        include file_c
+    }
 
 NOTE: Most of such constructions may be rewritten using the conditional "and".
 
@@ -184,9 +184,9 @@ calculation and writing. That way, one may set the checksum by hand using the
 
 ALGORITHM has to be one of
     * standard       (just a 16-Bit arithmetical sum)
-		* short          (a 8-Bit arithmetical sum)
-		* negative_sum   (a 16-Bit sum of 2's complement of values)
-		* negative_short (a 8-Bit sum of 2's complement of values)
+    * short          (a 8-Bit arithmetical sum)
+    * negative_sum   (a 16-Bit sum of 2's complement of values)
+    * negative_short (a 8-Bit sum of 2's complement of values)
 
 POSITION_0 is the position of the low byte of the checksum.
 POSITION_1 is needed for standard and negative_sum algorithm and stores the
@@ -196,7 +196,7 @@ FIELD_SIZE gives the size of the field in bytes to get a checksum of.
 
 EXAMPLE: Define a standard checksum for the AT BIOS fields (0x10..0x2d).
 
-	checksum atbios_checksum standard 0x2f 0x2e 0x10 0x1d
+    checksum atbios_checksum standard 0x2f 0x2e 0x10 0x1d
 
 
 Fail Directive:
@@ -210,7 +210,7 @@ did not help to autodetect a certain BIOS or board.
 
 EXAMPLE: You don't really need one, eh? Ok, here it is:
 
-	fail
+    fail
 
 
 Field type directives:
@@ -239,7 +239,7 @@ format must be supplied as the value.
 EXAMPLE: Define a byte array of 50 bytes named "atbios_data" starting
          at address 14.
 
-	bytearray atbios_data 0x0E 50
+    bytearray atbios_data 0x0E 50
 
 
 Strings:
@@ -263,7 +263,7 @@ field contents.
 EXAMPLE: Define a string field of maximum 4 bytes named "TEST_S" starting
          at address 128.
 
-	string TEST_S 0x80 4
+    string TEST_S 0x80 4
 
 
 Bitfields:
@@ -281,8 +281,8 @@ the first occurency of the value is written to NVRAM.
 EXAMPLE: Define two bitfields with the names "floppy_a_type" and "floppy_b_type"
          with bits 4,5,6 (floppy B: 0,1,2) of NVRAM address 16.
 
-	bitfield floppy_a_type 3 0x10:4 0x10:5 0x10:6 none 360KB 1.2MB 720KB 1.44MB 2.88MB invalid invalid
-	bitfield floppy_b_type 3 0x10:0 0x10:1 0x10:2 none 360KB 1.2MB 720KB 1.44MB 2.88MB invalid invalid
+    bitfield floppy_a_type 3 0x10:4 0x10:5 0x10:6 none 360KB 1.2MB 720KB 1.44MB 2.88MB invalid invalid
+    bitfield floppy_b_type 3 0x10:0 0x10:1 0x10:2 none 360KB 1.2MB 720KB 1.44MB 2.88MB invalid invalid
 
 
 Include Directive:
@@ -308,8 +308,8 @@ allows to map the DMI information to actual configuration files.
 EXAMPLES: Include the correct hardware directive.
           Include BIOS specific fields.
 
-	include %sm:%sp
-	include %bm:%bv
+    include %sm:%sp
+    include %bm:%bv
 
 
 Log Directive:
@@ -318,14 +318,16 @@ The log directive
     * log LEVEL MESSAGE0..MESSAGEn
 immediately prints a message to stderr whenever the LEVEL, which may be one of
     * debug
-		* info
-		* warning
-		* error
+    * info
+    * warning
+    * error
 is equal or higher than the loglevel requested on command line. By default,
 only errors and warnings are reported. The --verbose command line option turns
 on "info" messages, --debug turns on "debug" messages, too. The command line
 option --quiet turns off warnings, too. "Error" messages may only be
-suppressed by redirecting stderr to /dev/null.
+suppressed by redirecting stderr to /dev/null. Therefore, "log error ..." will
+*never* fail a way which may detected by a conditional statement. Use the
+"error" log level sparingly for that reason.
 
 
 "Or" Directive:
@@ -336,20 +338,20 @@ the "or" directive will only be executed if the directive before *failed*. The
 the FAIL/OK status, all other directives do.
 
 LIMITATIONS: So far, the only directives which may fail are
-		* break   -- always marks the block it is issued in as failed.
+    * break   -- always marks the block it is issued in as failed.
     * include -- when file open fail.
-		* log     -- when the loglevel does not allow to print a message.
+    * log     -- when the loglevel does not allow to print a message.
 
 EXAMPLE: Include from the first readable file in the list.
 
-	include hardware/%mm:%mp
-	or include hardware/%mm:%sp
-	or include hardware/%sm:%mp
-	or include hardware/%sm:%sp
-	or {
-		log error did not found any hardware description matching the installed motherboard.
-		fail
-	}	
+    include hardware/%mm:%mp
+    or include hardware/%mm:%sp
+    or include hardware/%sm:%mp
+    or include hardware/%sm:%sp
+    or {
+        log error did not found any hardware description matching the installed motherboard.
+        fail
+    }   
 
 
 Hardware directive:
@@ -369,7 +371,7 @@ and above) is not accessible.
 
 EXAMPLE: Use via82cxx (and compatible) hardware access.
 
-	hardware via82cxx
+    hardware via82cxx
 
 
 
@@ -396,7 +398,99 @@ nvram utility's binary first.
 YOU HAVE BEEN WARNED -- BE CAREFUL!
 
 
+The general syntax is
+
+        nvram [OPTIONS] <COMMAND> [PARAMETERS]
+
+The OPTIONS are
+
+  -c 
+  --no-checksum-update 
+    
+    Checksums fields noted in the configuration are usually updated
+    automatically whenever a field (inside or outside the area protected by a
+    checksum!) in the NVRAM is written. With this option set, no checksum
+    updates are made.
+
+    -d
+  --dry-run
+    
+    This option performs a dry run, meaning, all operations but the actual
+    write operation to the NVRAM are done.
+
+  --raw-dmi
+
+    Usually, the nvram utility will "cook" DMI data before using it. This
+    option may be used to show the raw DMI data instead of the cooked one.
+    Note that the configuration files delivered with the nvram utility will
+    only work properly with the default "cooked" behaviour.
+
+    BACKGROUND:
+
+    Many BIOSes pad DMI fields with spaces or use the slash character in date
+    fields. This causes trouble when using the DMI field contents to include
+    board or BIOS specific configuration files. The utility therefore replaces
+    the / by the % character and trim leading and trainling spaces from DMI
+    strings before using them.
+
+  -v
+  --verbose
+  --debug
+    -q
+  --quiet
+
+    These options raise (-q and --quiet lower) the log level so the printing
+    of warning, informational and debug messages may be activated (or
+    suppressed in case of -q and --quiet). Error messages are printed in any
+    case. To supress error messages, redirect stderr to /dev/null.
+
+  --help
+
+    Shows a help message and exit
+
+  --version
+
+    Shows the version number and exit
 
 
+The COMMAND must be one of
+
+  probe
+
+    Just list the DMI data relevant to this utility and list the NVRAM
+    contents for all possible hardware types. Useful if you want to check
+    which hardware and BIOS a particular computer has.
+
+  list
+
+    List all the fields which are configured for the computer. The available
+    fields are determined using the configuration files. See CONFIGURATION
+    above.
+    
+  get [IDENTIFIER] [IDENTFIER]...
+    
+    This command prints the contents of the specified NVRAM fields to stdout.
+    Multiple values are separated by line end (\n), so be careful when printing
+    string fields. If the output may contain line ends, only one IDENTIFIER
+    should be specified.
+        
+    The output format is set up in the configuration. More than one output
+    format may be specified for a region in the NVRAM. Then often, alternate
+    field names with suffixes like _S (for "string" in contrast to bytearray)
+    are used.
+
+  set [IDENTIFIER VALUE] [IDENTIFIER VALUE]...
+
+    Set values in the NVRAM. The data is name-value pairs, the format of the
+    value must be the same which was given when printing a field value with
+    the "get" command. If fields belonging to specific IDENTFIER overlap, the
+    right-most field wins (though all information stored in non-overlapping
+    parts of the left-of fields remain changed as requested. This could lead to
+    funny results. Be careful!)
+
+    Checksums in the NVRAM are calculated automatically unless the -c (or
+    --no-checksum-update) option is given. The latter is neccessary if you
+        want to set the checksum by hand.
 
 
+*** END OF README
