@@ -32,25 +32,26 @@
 
 /* Hardware structure. */
 typedef struct {
-	int         type;
-	const char *bios_vendor;
-	const char *bios_version;
-	const char *bios_release_date;
-	const char *system_manufacturer;
-	const char *system_productcode;
-	const char *system_version;
-	const char *board_manufacturer;
-	const char *board_productcode;
-	const char *board_version;
+	int   type;
+	char *bios_vendor;
+	char *bios_version;
+	char *bios_release_date;
+	char *system_manufacturer;
+	char *system_productcode;
+	char *system_version;
+	char *board_manufacturer;
+	char *board_productcode;
+	char *board_version;
 } hardware_t;
 
 /* Settings given in the configuration and/or command line. */
 typedef struct {
 	int    argc;
 	char **argv;
-	char   write_to_nvram;
-	char   update_checksums;
+	char   dmi_raw;
 	char   loglevel;
+	char   update_checksums;
+	char   write_to_nvram;
 } settings_t;
 
 #endif

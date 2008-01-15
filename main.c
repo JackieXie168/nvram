@@ -41,10 +41,7 @@ extern wchar_t *checksum_algorithms[];
 
 
 /* Usage message. */
-const wchar_t USAGE[] = L"USAGE: nvram [OPTIONS] probe\n"
-"  nvram [OPTIONS] list\n"
-"  nvram [OPTIONS] get identifier [identifier]...\n"
-"  nvram [OPTIONS] set identifier value [identifier value]...\n"
+const wchar_t USAGE[] = L"USAGE: nvram [OPTIONS] <COMMAND> [PARAMETERS]\n"
 "OPTIONS are\n"
 "  --no-checksum-update (-c) -- NVRAM checksums will not be updated automatically\n"
 "  --dry-run            (-d) -- no changes are actually written to NVRAM\n"
@@ -52,7 +49,12 @@ const wchar_t USAGE[] = L"USAGE: nvram [OPTIONS] probe\n"
 "  --debug                   -- raise log level so informational and debug messages are printed\n"
 "  --quiet              (-q) -- lower log level so only errors are printed\n"
 "  --help                    -- Show this help\n"
-"  --version                 -- Show version number and exit\n";
+"  --version                 -- Show version number and exit\n"
+"COMMAND must be one of\n"
+"  probe                                         -- probe BIOS and hardware\n"
+"  list                                          -- list NVRAM fields available on this computer\n"
+"  get [IDENTIFIER] [IDENTFIER]...               -- get values for the NVRAM fields specified\n"
+"  set [IDENTIFIER VALUE] [IDENTIFIER VALUE]...  -- set values for the NVRAM fields specified\n";
 
 /* Version message. */
 const wchar_t VERSION[] = L"nvram 0.1\n";
@@ -505,20 +507,22 @@ int main(int argc, char *argv[])
 	int nvram_fd;
 	int option_index;
 	static struct option long_options[] = {
+		{"debug", 0, 0, 'D'},
+		{"dry-run", 0, 0, 'd'},
 		{"help", 0, 0, '?'},
 		{"no-checksum-update", 0, 0, 'c'},
-		{"dry-run", 0, 0, 'd'},
-		{"verbose", 0, 0, 'v'},
 		{"quiet", 0, 0, 'q'},
-		{"debug", 0, 0, 'g'},
-		{"version", 0, 0, 'y'},
+		{"raw-dmi", 0, 0, 'R'},
+		{"verbose", 0, 0, 'v'},
+		{"version", 0, 0, 'V'},
 		{0, 0, 0, 0}
 	};
 
 	/* Setup defaults. */
-	settings.write_to_nvram=1;
-	settings.update_checksums=1;
 	settings.loglevel=LOGLEVEL_WARNING;
+	settings.update_checksums=1;
+	settings.write_to_nvram=1;
+	settings.dmi_raw=0;
 
 	/* Lock the nvram utility against multiple invocation. */
 	if ((nvram_fd=open(argv[0], O_RDONLY)) == -1) {
@@ -550,7 +554,7 @@ int main(int argc, char *argv[])
 				settings.loglevel=LOGLEVEL_INFO;
 				break;
 
-			case 'g':
+			case 'D':
 				settings.loglevel=LOGLEVEL_DEBUG;
 				break;
 
@@ -558,7 +562,11 @@ int main(int argc, char *argv[])
 				settings.loglevel=LOGLEVEL_ERROR;
 				break;
 
-			case 'y':
+			case 'R':
+				settings.dmi_raw=1;
+				break;
+
+			case 'V':
 				fwprintf(stderr, VERSION);
 				exit(EXIT_FAILURE);
 
@@ -583,7 +591,7 @@ endopt:
 	hardware_description.type=HARDWARE_TYPE_STANDARD;
 
 	/* Detect BIOS, system, and board info. */
-	if (dmi_detect(&hardware_description) == -1) {
+	if (dmi_detect(&settings, &hardware_description) == -1) {
 		fwprintf(stderr, L"nvram: hardware detection failed: %s.\n", strerror(errno));
 		exit(EXIT_FAILURE);
 	}
