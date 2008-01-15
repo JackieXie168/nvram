@@ -7,6 +7,7 @@
 
 #define _GNU_SOURCE
 
+#include <ctype.h>
 #include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -60,8 +61,37 @@ const char *dmi_string(dmi_record_t *dmi_record, int position, char *limit)
 }
 
 
+/* Cook a dmi string. */
+char *dmi_string_cook(char *s)
+{
+	char *p, *q;
+
+	/* Replace the character / by %. */
+	while ((p=strchr(s,'/')) != NULL) *p='%';
+
+	/* Remove any leading whitespace. */
+	p=s, q=s;
+	while ((*p != '\0') && isspace(*p)) p++;
+	while (*p != '\0') *q=*p, q++, p++;
+	*q='\0';
+
+	/* Remove any trailing whitespace. */
+	p=s;
+	if (*p != '\0') {
+		do p++; while (*p != '\0');
+		p--;
+		while (isspace(*p)) p--;
+		p++;
+		*p='\0';
+	}
+
+	/* Return changed string. */
+	return s;
+}
+
+
 /* Detect mainboard and bios version from DMI table. */
-int dmi_detect(hardware_t *hardware)
+int dmi_detect(settings_t *settings, hardware_t *hardware)
 {
   char          buffer[16];
 	off_t         position;
@@ -134,10 +164,16 @@ int dmi_detect(hardware_t *hardware)
 		if (!found_bios_info && ((dmi_record_t*)dmi_record)->type == 0) {
 			/* Found BIOS info. */
 			found_bios_info++;
-
 			hardware->bios_vendor=strdup(dmi_string((dmi_record_t*)dmi_record, 0, next_dmi_record));
 			hardware->bios_version=strdup(dmi_string((dmi_record_t*)dmi_record, 1, next_dmi_record));
 			hardware->bios_release_date=strdup(dmi_string((dmi_record_t*)dmi_record, 4, next_dmi_record));
+
+			/* "Cook" strings if desired. */
+			if (!settings->dmi_raw) {
+				dmi_string_cook(hardware->bios_vendor);
+				dmi_string_cook(hardware->bios_version); 
+				dmi_string_cook(hardware->bios_release_date);
+			}
 		}
 
 		/* Check for system info record. */
@@ -148,6 +184,13 @@ int dmi_detect(hardware_t *hardware)
 			hardware->system_manufacturer=strdup(dmi_string((dmi_record_t*)dmi_record, 0, next_dmi_record));
 			hardware->system_productcode=strdup(dmi_string((dmi_record_t*)dmi_record, 1, next_dmi_record));
 			hardware->system_version=strdup(dmi_string((dmi_record_t*)dmi_record, 2, next_dmi_record));
+
+			/* "Cook" strings if desired. */
+			if (!settings->dmi_raw) {
+				dmi_string_cook(hardware->system_manufacturer);
+				dmi_string_cook(hardware->system_productcode);
+				dmi_string_cook(hardware->system_version);
+			}
 		}
 
 		/* Check for board info record. */
@@ -158,6 +201,13 @@ int dmi_detect(hardware_t *hardware)
 			hardware->board_manufacturer=strdup(dmi_string((dmi_record_t*)dmi_record, 0, next_dmi_record));
 			hardware->board_productcode=strdup(dmi_string((dmi_record_t*)dmi_record, 1, next_dmi_record));
 			hardware->board_version=strdup(dmi_string((dmi_record_t*)dmi_record, 2, next_dmi_record));
+
+			/* "Cook" strings if desired. */
+			if (!settings->dmi_raw) {
+				dmi_string_cook(hardware->board_manufacturer);
+				dmi_string_cook(hardware->board_productcode); 
+				dmi_string_cook(hardware->board_version);
+			}
 		}
 
 		/* Seek to next DMI record. */
