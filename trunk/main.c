@@ -503,11 +503,12 @@ int main(int argc, char *argv[])
 {
 	LIST_HEAD(token_list);
 	LIST_HEAD(nvram_mapping);
-	hardware_t hardware_description;
-	settings_t settings;
-	int i;
-	int nvram_fd;
-	int option_index;
+	hardware_t    hardware_description;
+	settings_t    settings;
+	unsigned char nvram_cell_0x50, nvram_cell_0x53;
+	int           i;
+	int           nvram_fd;
+	int           option_index;
 	static struct option long_options[] = {
 		{"debug", 0, 0, 'D'},
 		{"dry-run", 0, 0, 'd'},
@@ -627,6 +628,13 @@ endopt:
 		for (i=0; i<128; i++) fwprintf(stdout, L" %02x", nvram_read(i));
 		fwprintf(stdout, L"\n");
 
+		/*
+		 *  Save postion 0x50 and 0x53 of standard NVRAM contents in case
+		 *  the NVRAM is not a DS1685.
+		 */
+		nvram_cell_0x50=nvram_read(0x50); 
+		nvram_cell_0x53=nvram_read(0x53); 
+
 		/* Close NVRAM. */
 		nvram_close();
 
@@ -686,6 +694,22 @@ endopt:
 		fwprintf(stdout, L"Extended NVRAM (ds1685, 128..255):");
 		for (i=128; i<256; i++) fwprintf(stdout, L" %02x", nvram_read(i));
 		fwprintf(stdout, L"\n");
+
+		/* Close NVRAM. */
+		nvram_close();
+
+
+		/* Restore NVRAM contents. */
+		/* Open NVRAM. */
+		if (nvram_open(HARDWARE_TYPE_STANDARD) == -1) {
+			perror("nvram_open");
+			exit(EXIT_FAILURE);
+		}
+
+		/* Restore postion 0x50 and 0x53 of standard NVRAM contents. */
+		nvram_write(0x50,nvram_cell_0x50); 
+		nvram_write(0x53,nvram_cell_0x53);
+		nvram_flush();
 
 		/* Close NVRAM. */
 		nvram_close();
