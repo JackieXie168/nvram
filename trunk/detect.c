@@ -1,7 +1,7 @@
 /*
  *   detect.c -- Detect mainboard and BIOS version from DMI.
  *
- *   Copyleft (c) 2007, Jan Kandziora <nvram@kandziora-ing.de>
+ *   Copyright (c) 2007, Jan Kandziora <nvram@kandziora-ing.de>
  * 
  */
 

@@ -1,7 +1,7 @@
 /*
  *   map.c -- stores NVRAM mappings in a linked list.
  *
- *   Copyleft (c) 2007, Jan Kandziora <nvram@kandziora-ing.de>
+ *   Copyright (c) 2007, Jan Kandziora <nvram@kandziora-ing.de>
  * 
  */
 
