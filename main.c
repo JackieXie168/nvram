@@ -1,7 +1,7 @@
 /*
  *   nvram -- A tool to operate on extended nvram most modern PC chipsets offer.
  *
- *   Copyleft (c) 2007, Jan Kandziora <nvram@kandziora-ing.de>
+ *   Copyright (c) 2007, Jan Kandziora <nvram@kandziora-ing.de>
  * 
  */
 

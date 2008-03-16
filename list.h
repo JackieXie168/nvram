@@ -6,7 +6,7 @@
  *   Distilled to the most useful functions from Linux kernel's
  *   /usr/include/linux/list.h
  *
- *   Copyleft (c) 2007, Jan Kandziora <nvram@kandziora-ing.de>
+ *   Copyright (c) 2007, Jan Kandziora <nvram@kandziora-ing.de>
  * 
  */
 

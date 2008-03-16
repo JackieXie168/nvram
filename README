@@ -99,7 +99,7 @@ of
 
 # nvram --raw-dmi probe
 
-via email to Jan Kandziora <nvram@kandziora-ing>. No dread, the data you'll
+via email to Jan Kandziora <nvram@kandziora-ing.de>. No dread, the data you'll
 send doesn't contain your personal data and couldn't be used to track you
 through the internet (plus: I won't do it, even if I could). It's just the
 whole nvram contents of your computer (at most 256 valid bytes) along with
