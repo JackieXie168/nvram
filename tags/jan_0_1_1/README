@@ -1,0 +1,496 @@
+*** NVRAM Utility README file.
+*** Copyleft (c) 2007, Jan Kandziora <nvram@kandziora-ing.de>
+***
+*** This is the main documentation for the nvram utility by Jan Kandziora.
+
+
+
+FUNCTIONAL BACKGROUND OF NVRAM
+==============================
+The NVRAM (Non-Volatile-RAM, often called CMOS for historical reasons) is a
+small additional memory inside a computer. It is backed up by a battery
+connected to the computer mainboard, so data in that NVRAM is *not* lost
+on mains power down, as data in main memory is. These days, the battery is
+usually a CR2032 lithium button cell which is placed in a battery clip on the
+mainboard. The NVRAM is small (typically 64 to 256 bytes), as the chip it
+resides in has to save energy so you never need to replace the battery. 
+
+The purpose of NVRAM is to save some variable data over power down, even when
+no other permanent memory (e.g. a harddisk) is accessible. This data may be
+the preferred boot media or low level hardware settings. So the NVRAM is
+basically the only permanent data storage the BIOS of the computer may rely on.
+(Note: This is not entirely true -- there is a FlashROM in most PCs today,
+which needs no mains power either. However, writing the BIOS Flash is abhored
+by a lot of computer users as you may damage the FlashROM chip and thus, turn
+your PC into an expensive brick. In addition, some mainboards require to turn a
+jumper to enable flashing for the above reason -- a virus or trojan must not
+turn the the PC into a brick -- but this renders flashing impractical for most
+applications.)
+
+
+There a a lot of different mainboards and BIOS programs for PCs and such, the
+size of the NVRAM, the method for accessing it, and the sort of information
+stored in it and its position are an impressive mess. (In fact, *all* things
+designed by the PC industry ended up in an impressive mess so far, NVRAM is
+only a prominent example.)
+
+
+
+MOTIVATION OF THIS NVRAM UTILITY
+================================
+Before this utility, there were no comprehensive utilities for the Linux OS
+which make it possible to view/change variables inside the NVRAM without
+having to look at additional documentation to find out which bits in the NVRAM
+are containing which kind of BIOS setting. For changing NVRAM, one have to
+find out which checksum mechanism the BIOS uses for the NVRAM, and where the
+checksum resides. To do this, one have to find out which NVRAM chip the
+mainboard uses, which BIOS vendor and version the PC has etc.
+This has made it impractical, if not impossible, to manipulate the NVRAM from
+within the running OS, automatically by a script even less than ever.
+
+There are some partial solutions to this problem, e.g. the Linux nvram driver,
+which allows to read and write the first 128 byte of nvram through the
+/dev/nvram device node and read some old-tyme (and pseudo-standard) BIOS
+settings from the /proc/driver/nvram pseudofile. But no further semantic
+mapping is done and the checksum has to be calculated by hand.
+
+Another partial solution is nvram-wakeup, whose developers try to develop a
+portable solution for a particular BIOS setting, the "timed wakeup function"
+present in modern PCs. A useful function, but only adressing a part of the
+problem. But NVRAM wakeup has an extensive list of mainboards, BIOSes and
+calculates the correct NVRAM checksum automatically.
+
+Kudos to both! Their efforts made it easy for me to dive into the
+subject and significantly lowered the neccessary investigation to create
+this utility.
+
+
+While these existing programs do some useful things, this nvram utility 
+orders the whole mess and makes it possible e.g. to change the preferred boot
+device *e.g.* from CD to harddisk from *within* the OS *in a portable fashion*.
+But changing this particular setting is not the aim of this utility: It has
+access to all 256 NVRAM bytes on many mainboards, can map all fields in a NVRAM
+to identifiers, announces if a field is available, calculate and check/store
+the checksum(s) automatically and let the data be easily being extracted or
+altered by a shell script. So it addresses all the white space the other
+utilities left on the NVRAM map.
+
+
+In addition, the NVRAM layout is configured completely by configuration files,
+so anyone may easily change and extend existing maps if a map is not 100%
+matching the reality of the BIOS in question. You are invited to share your
+particular configuration to make the auto detection work fine for other users,
+too.
+
+As a small bonus, the tended hacker may define *additional* fields in the
+NVRAM e.g. to store settings on a diskless machine. Most PC BIOSes use only
+the first 128 byte of NVRAM and a few bytes above that border -- so there is
+some space for adding application specific variables.
+
+
+
+JOIN THE PARTY!
+===============
+The nvram configuration files are far from being complete. With any machine
+new on the market, something may have changed, at least the hardware and BIOS
+revision. I kindly ask you to provide information to extend (or correct) the
+existing configuration files. Please send some basic information -- the output
+of
+
+# nvram --raw-dmi probe
+
+via email to Jan Kandziora <nvram@kandziora-ing.de>. No dread, the data you'll
+send doesn't contain your personal data and couldn't be used to track you
+through the internet (plus: I won't do it, even if I could). It's just the
+whole nvram contents of your computer (at most 256 valid bytes) along with
+vendor and version strings from your computer's BIOS. Please write if you are
+eager to help -- I will then contact you to gather some more specific
+information about your computer's BIOS.
+
+
+
+CONFIGURATION
+=============
+The nvram utility uses a large number of configuration files. The main
+configuration file is /etc/nvram.conf. There is a directory /etc/nvram.d, where
+additional files for including from the main file are stored. The nvram utility
+changes its current directory to that directory after start, so includes may be
+relative to that directory.
+
+In all configuration files, each of the directives may be used.
+
+
+"And" Directive:
+----------------
+The "and" directive is leading a conditional statement. Any directive following
+the "and" directive will only be executed if the directive before *succeded*.
+The "and" directive itself, the "or" directive and the closing brace do not
+alter the FAIL/OK status, all other directives do.
+
+LIMITATIONS: So far, the only directives which may fail are
+    * break   -- always marks the block it is issued in as failed.
+    * include -- when file open fails.
+    * log     -- when the loglevel does not allow to print a message.
+
+EXAMPLES: Include some files, log if all succeeded.
+
+    include hardware/%mm:%mp
+    and include %bm:%bv:%br
+    and log info All loaded! OK!
+
+
+Braces Directives:
+------------------
+"{" and "}" form block statements out of directives. They are most useful in
+conjunction with conditionals like "or". Both braces are distinct commands and
+no other command may follow on the same line. Braces may nest and may be
+opened in one configuration file and being closed in another -- however, at
+the end of configuration scanning, all braces must be balanced. 
+
+EXAMPLE: See at "or" directive.
+
+
+Break and Continue Directives:
+------------------------------
+Both "break" and continue let the control flow leave the current block
+immediately. The difference is the exit status. While "break" always reports 
+a failed block, "continue" always reports a succeded block. This is important
+if a conditional (e.g "or") follows a block.
+
+EXAMPLE: Load some include file_a and a *dependend* file_b *or* a file_c with
+         a warning instead.
+
+    {
+        include file_a
+        or break
+        include file_b
+    }
+    or {
+        log info could not load file_a and file_b, loading file_c instead
+        include file_c
+    }
+
+NOTE: Most of such constructions may be rewritten using the conditional "and".
+
+
+Checksum Directive:
+-------------------
+The checksum directive
+    * checksum IDENTIFIER ALGORITHM POSITION_0 [POSITION_1] FIELD_POSITION FIELD_SIZE 
+allows to test and automatically calculate checksums on write of the NVRAM
+data. There is a command line option which disables automatic checksum
+calculation and writing. That way, one may set the checksum by hand using the
+"set" command.
+
+ALGORITHM has to be one of
+    * standard       (just a 16-Bit arithmetical sum)
+    * short          (a 8-Bit arithmetical sum)
+    * negative_sum   (a 16-Bit sum of 2's complement of values)
+    * negative_short (a 8-Bit sum of 2's complement of values)
+
+POSITION_0 is the position of the low byte of the checksum.
+POSITION_1 is needed for standard and negative_sum algorithm and stores the
+  high byte of the checksum
+FIELD_POSITION gives the starting address of the field to get a checksum of.
+FIELD_SIZE gives the size of the field in bytes to get a checksum of.
+
+EXAMPLE: Define a standard checksum for the AT BIOS fields (0x10..0x2d).
+
+    checksum atbios_checksum standard 0x2f 0x2e 0x10 0x1d
+
+
+Fail Directive:
+---------------
+The fail directive
+    * fail
+immediatly stops configuration scanning and fails with file name and line
+number. This is useful in conjunction with the "log" directive to warn the
+user about unclear configuration when some "include" directive with wildcards
+did not help to autodetect a certain BIOS or board.
+
+EXAMPLE: You don't really need one, eh? Ok, here it is:
+
+    fail
+
+
+Field type directives:
+----------------------
+The NVRAM configuration lists a number of fields, each with a position and
+size given in bytes. Fields may overlap partly or as a whole. On set operation,
+the field given on the command line more right wins. The resulting map is
+applied to the system's NVRAM. If a field in the map exceeds the NVRAM size in
+the actual system, reads of such fields return always 0xff in the locations
+where no further NVRAM exists, and writes are a no-op in such regions. So an
+entry which seems to work may be broken. Take care of this when editing the
+NVRAM configuration!
+
+There are currently three directives for field types:
+    * bytearray IDENTIFIER POSITION FIELD_SIZE
+    * string    IDENTIFIER POSITION FIELD_SIZE
+    * bitfield  IDENTIFIER n POSITION_0 .. POSITION_(n-1) VALUE_0 .. VALUE_(2^n)-1
+
+
+Bytearrays:
+~~~~~~~~~~~
+Bytearrays are a fixed number of bytes and are printed as non-prefixed hex
+bytes by default. On set operation, the exact number of bytes in the same
+format must be supplied as the value.
+
+EXAMPLE: Define a byte array of 50 bytes named "atbios_data" starting
+         at address 14.
+
+    bytearray atbios_data 0x0E 50
+
+
+Strings:
+~~~~~~~~
+Strings are stored as (multi-byte) chars in the system encoding and are
+printed as such. If an actual string is shorter than the field size (noted
+by a \0 at the end), only that part of the field contents is printed.
+On set operation, the string may be at most the size of the field. A \0 is
+appended automatically, aside from the case where the field is completely
+filled -- then there is no \0 neccessary and thus, not written.
+The field size is fixed in the configuration and *not* dependend of the
+field contents.
+
+*** NOTES:
+
+    * International characters may occupy more than one byte per character,
+      especially in the UTF-8 encoding standard on modern systems.
+    * If the system encoding is changed, string fields may produce nonsense
+      on output. Use the "iconv" utility to fix that.
+
+EXAMPLE: Define a string field of maximum 4 bytes named "TEST_S" starting
+         at address 128.
+
+    string TEST_S 0x80 4
+
+
+Bitfields:
+~~~~~~~~~~
+Bitfields are especially useful to tie together noadjacent data (a bit here,
+a bit there) so common in BIOS NVRAM data. "n" is the number of bits in the
+bitfield (so far, a maximum of 5 is hardcoded), followed by a number of
+NVRAM position codes for the bits in the format BYTE_POSITION:BIT_POSITION.
+The n position codes form a "virtual" bitfield, LSB is taken from
+position 0. Then, a number of 2^n values is applied to that "virtual"
+bitfield as the translations for certain bit combinations. A value may be
+noted more than once -- on set operation, the bit combination representing
+the first occurency of the value is written to NVRAM.
+
+EXAMPLE: Define two bitfields with the names "floppy_a_type" and "floppy_b_type"
+         with bits 4,5,6 (floppy B: 0,1,2) of NVRAM address 16.
+
+    bitfield floppy_a_type 3 0x10:4 0x10:5 0x10:6 none 360KB 1.2MB 720KB 1.44MB 2.88MB invalid invalid
+    bitfield floppy_b_type 3 0x10:0 0x10:1 0x10:2 none 360KB 1.2MB 720KB 1.44MB 2.88MB invalid invalid
+
+
+Include Directive:
+------------------
+The include directive
+    * include FILENAME
+allows to include other configuration files at the point where the include
+directive was given. Includes may be nested. Special wildcards are
+expanded to information taken from BIOS' DMI table:
+    * %bm BIOS vendor
+    * %bv BIOS version
+    * %br BIOS release date
+    * %sm system manufacturer 
+    * %sp system product code
+    * %sv system version
+    * %mm board manufacturer
+    * %mp board product code
+    * %mv board version
+    
+Usually, there a a few files and a lot of symlinks in /etc/nvram.d/, which
+allows to map the DMI information to actual configuration files.
+
+EXAMPLES: Include the correct hardware directive.
+          Include BIOS specific fields.
+
+    include %sm:%sp
+    include %bm:%bv
+
+
+Log Directive:
+--------------
+The log directive
+    * log LEVEL MESSAGE0..MESSAGEn
+immediately prints a message to stderr whenever the LEVEL, which may be one of
+    * debug
+    * info
+    * warning
+    * error
+is equal or higher than the loglevel requested on command line. By default,
+only errors and warnings are reported. The --verbose command line option turns
+on "info" messages, --debug turns on "debug" messages, too. The command line
+option --quiet turns off warnings, too. "Error" messages may only be
+suppressed by redirecting stderr to /dev/null. Therefore, "log error ..." will
+*never* fail a way which may detected by a conditional statement. Use the
+"error" log level sparingly for that reason.
+
+
+"Or" Directive:
+---------------
+The "or" directive is leading a conditional statement. Any directive following
+the "or" directive will only be executed if the directive before *failed*. The
+"or" directive itself, the "and" directive and the closing brace do not alter
+the FAIL/OK status, all other directives do.
+
+LIMITATIONS: So far, the only directives which may fail are
+    * break   -- always marks the block it is issued in as failed.
+    * include -- when file open fail.
+    * log     -- when the loglevel does not allow to print a message.
+
+EXAMPLE: Include from the first readable file in the list.
+
+    include hardware/%mm:%mp
+    or include hardware/%mm:%sp
+    or include hardware/%sm:%mp
+    or include hardware/%sm:%sp
+    or {
+        log error did not found any hardware description matching the installed motherboard.
+        fail
+    }   
+
+
+Hardware directive:
+-------------------
+The NVRAM type is set with the directive
+    * hardware HARDWARE_NAME
+
+HARDWARE_NAME may be
+    * standard   (for any compatible RTC -- only 64/128 bytes NVRAM!)
+    * intel      (for Intel ICHx southbridge series, 256 Byte)
+    * via82cxx   (for VIA 82Cxx ISA bridge series, 256 Byte)
+    * via823x    (for VIA 823x ISA bridge series, 256 Byte)
+    * ds1685     (for distinct DS1685 RTC chips, 256 Byte)
+
+If no or a wrong hardware directive is given, the extended NVRAM (Bytes 128
+and above) is not accessible.
+
+EXAMPLE: Use via82cxx (and compatible) hardware access.
+
+    hardware via82cxx
+
+
+
+INVOCATION
+==========
+Once the configuration files are properly done, root (and only root) may
+invocate the nvram utility. Don't even dare to set up this utility as SUID!
+An arbitrary user may prevent the computer from working properly from next
+reboot on.
+
+In addition, due to limitations from the hardware, it is impossible to access
+the nvram in an atomic operation, so multiple programs accessing the nvram may,
+no, *will* fail and leave the nvram in an undefined state. This applies even
+for just reading the NVRAM (on the DS1685 NVRAM) and for concurrent access by
+both this utility and the kernel's nvram driver.
+
+The nvram utility locks itself against simultaneous invocation (it waits), but
+this doesn't apply to the kernel driver or external programs like nvram-wakeup.
+It's up to you to prevent the different utilities crossing their ways. Unload
+the kernel's nvram driver if possible. Don't let anyone else than root control
+nvram-wakeup (not even indirectly!) without getting an exclusive lock on this
+nvram utility's binary first.
+
+YOU HAVE BEEN WARNED -- BE CAREFUL!
+
+
+The general syntax is
+
+        nvram [OPTIONS] <COMMAND> [PARAMETERS]
+
+The OPTIONS are
+
+  -c 
+  --no-checksum-update 
+    
+    Checksums fields noted in the configuration are usually updated
+    automatically whenever a field (inside or outside the area protected by a
+    checksum!) in the NVRAM is written. With this option set, no checksum
+    updates are made.
+
+    -d
+  --dry-run
+    
+    This option performs a dry run, meaning, all operations but the actual
+    write operation to the NVRAM are done.
+
+  --raw-dmi
+
+    Usually, the nvram utility will "cook" DMI data before using it. This
+    option may be used to show the raw DMI data instead of the cooked one.
+    Note that the configuration files delivered with the nvram utility will
+    only work properly with the default "cooked" behaviour.
+
+    BACKGROUND:
+
+    Many BIOSes pad DMI fields with spaces or use the slash character in date
+    fields. This causes trouble when using the DMI field contents to include
+    board or BIOS specific configuration files. The utility therefore replaces
+    the / by the % character and trim leading and trainling spaces from DMI
+    strings before using them.
+
+  -v
+  --verbose
+  --debug
+    -q
+  --quiet
+
+    These options raise (-q and --quiet lower) the log level so the printing
+    of warning, informational and debug messages may be activated (or
+    suppressed in case of -q and --quiet). Error messages are printed in any
+    case. To supress error messages, redirect stderr to /dev/null.
+
+  --help
+
+    Shows a help message and exit
+
+  --version
+
+    Shows the version number and exit
+
+
+The COMMAND must be one of
+
+  probe
+
+    Just list the DMI data relevant to this utility and list the NVRAM
+    contents for all possible hardware types. Useful if you want to check
+    which hardware and BIOS a particular computer has.
+
+  list
+
+    List all the fields which are configured for the computer. The available
+    fields are determined using the configuration files. See CONFIGURATION
+    above.
+    
+  get [IDENTIFIER] [IDENTFIER]...
+    
+    This command prints the contents of the specified NVRAM fields to stdout.
+    Multiple values are separated by line end (\n), so be careful when printing
+    string fields. If the output may contain line ends, only one IDENTIFIER
+    should be specified.
+        
+    The output format is set up in the configuration. More than one output
+    format may be specified for a region in the NVRAM. Then often, alternate
+    field names with suffixes like _S (for "string" in contrast to bytearray)
+    are used.
+
+  set [IDENTIFIER VALUE] [IDENTIFIER VALUE]...
+
+    Set values in the NVRAM. The data is name-value pairs, the format of the
+    value must be the same which was given when printing a field value with
+    the "get" command. If fields belonging to specific IDENTFIER overlap, the
+    right-most field wins (though all information stored in non-overlapping
+    parts of the left-of fields remain changed as requested. This could lead to
+    funny results. Be careful!)
+
+    Checksums in the NVRAM are calculated automatically unless the -c (or
+    --no-checksum-update) option is given. The latter is neccessary if you
+        want to set the checksum by hand.
+
+
+*** END OF README
