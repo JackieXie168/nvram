@@ -1,5 +1,5 @@
 *** NVRAM Utility README file.
-*** Copyleft (c) 2007, Jan Kandziora <nvram@kandziora-ing.de>
+*** Copyright (c) 2007, Jan Kandziora <nvram@kandziora-ing.de>
 ***
 *** This is the main documentation for the nvram utility by Jan Kandziora.
 
@@ -385,8 +385,8 @@ reboot on.
 In addition, due to limitations from the hardware, it is impossible to access
 the nvram in an atomic operation, so multiple programs accessing the nvram may,
 no, *will* fail and leave the nvram in an undefined state. This applies even
-for just reading the NVRAM (on the DS1685 NVRAM) and for concurrent access by
-both this utility and the kernel's nvram driver.
+for just reading the NVRAM and for concurrent access by both this utility and
+the kernel's nvram driver.
 
 The nvram utility locks itself against simultaneous invocation (it waits), but
 this doesn't apply to the kernel driver or external programs like nvram-wakeup.
@@ -430,7 +430,7 @@ The OPTIONS are
     Many BIOSes pad DMI fields with spaces or use the slash character in date
     fields. This causes trouble when using the DMI field contents to include
     board or BIOS specific configuration files. The utility therefore replaces
-    the / by the % character and trim leading and trainling spaces from DMI
+    the / by the % character and trim leading and trailing spaces from DMI
     strings before using them.
 
   -v
