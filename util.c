@@ -1,7 +1,7 @@
 /*
  *   util.c -- Utility functions.
  *
- *   Copyleft (c) 2007, Jan Kandziora <nvram@kandziora-ing.de>
+ *   Copyright (c) 2007, Jan Kandziora <nvram@kandziora-ing.de>
  * 
  */
 

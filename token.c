@@ -1,7 +1,7 @@
 /*
  *   token.c -- simple config tokenizer.
  *
- *   Copyleft (c) 2007, Jan Kandziora <nvram@kandziora-ing.de>
+ *   Copyright (c) 2007, Jan Kandziora <nvram@kandziora-ing.de>
  * 
  */
 

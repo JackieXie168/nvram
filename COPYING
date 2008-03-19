@@ -2,7 +2,7 @@ nvram -- A tool to operate on extended nvram most modern PC chipsets offer.
 
 
 Main developer:
-	Copyleft (c) 2007, Jan Kandziora <nvram@kandziora-ing.de>
+	Copyright (c) 2007, Jan Kandziora <nvram@kandziora-ing.de>
 
 Bios and board detection: Information taken from nvram-wakeup/bios.c
 	(c) 2002, Bernhard "Bero" Rosenkraenzer <bero@arklinux.org>
