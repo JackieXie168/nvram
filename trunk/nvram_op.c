@@ -17,14 +17,14 @@
 
 
 /* Global variable which stores the NVRAM type. */
-int nvram_type;
+static int nvram_type;
 
 /* Global variable which stores the value of RTC register A. Important for DS1685 hardware type. */
-int nvram_register_a;
+static int nvram_register_a;
 
 
 /* NVRAM cache */
-struct {
+static struct {
 	unsigned char value;
 	char          valid;
 	char          written;
@@ -32,8 +32,8 @@ struct {
 } nvram_cache[NVRAM_SIZE];
 
 
-/* Get access to nvram. */
-int nvram_open(int nvram_type_arg)
+/* Internal open routine. */
+static int nvram_open_internal(int nvram_type_arg)
 {
 	/* Get permissions to access the nvram. */
 	if (ioperm(0x70,6,1) == -1) return -1;
@@ -50,6 +50,19 @@ int nvram_open(int nvram_type_arg)
 
 	/* Initialization OK. */
 	return 0;
+}
+
+
+/* Get access to NVRAM. */
+int nvram_open(int nvram_type_arg)
+{
+	/* Detect NVRAM type if desired. */
+	if (nvram_type_arg == HARDWARE_TYPE_DETECT) {
+		nvram_type_arg=nvram_detect();
+	}
+
+	/* Open NVRAM with detected or given type. */
+	return nvram_open_internal(nvram_type_arg);
 }
 
 
@@ -191,5 +204,125 @@ void nvram_flush(void)
 			}	
 		}	
 	}
+}
+
+
+/* Write a byte immediately into NVRAM. */
+void nvram_write_immediate(unsigned int address, unsigned char data)
+{
+	unsigned int data_register;
+
+	/* Do nothing for nonexisting addresses. */
+	if ((data_register=nvram_address(address)) != -1) {
+		/* Write the byte into NVRAM. */
+		outb(data, data_register);
+
+		/* Mark the cache address as invalid. */
+		nvram_cache[address].valid=0;
+	}	
+}
+
+
+/* Probe for a specific NVRAM type. */
+int nvram_probe(int nvram_type_arg)
+{
+	unsigned char mask;
+	unsigned char nvram_cell_0x50, nvram_cell_0x53, nvram_cell_0x7f, nvram_cell_0xfe, nvram_cell_0xff;
+	int           result=0;
+
+	/* Open NVRAM with standard type. */
+	nvram_open_internal(HARDWARE_TYPE_STANDARD);
+
+	/*
+	 *  Save postion 0x50 and 0x53 of standard NVRAM contents in case
+	 *  the NVRAM is not a DS1685.
+	 */
+	nvram_cell_0x50=nvram_read(0x50); 
+	nvram_cell_0x53=nvram_read(0x53);
+
+	/* Close standard NVRAM. */
+	nvram_close();
+
+
+	/* Open NVRAM with type to probe. */
+	nvram_open_internal(nvram_type_arg);
+
+	/*
+	 *  Save postion 0x7f, 0xfe, and 0xff as we have to overwrite them for detection.
+	 */
+	nvram_cell_0x7f=nvram_read(0x7f);
+	nvram_cell_0xfe=nvram_read(0xfe);
+	nvram_cell_0xff=nvram_read(0xff);
+
+
+	/* Probe the last byte in extended NVRAM. */
+	/* Check all bits. */
+	for (mask=0x01; mask!=0x80; mask*=2) {
+		/*
+		 *  Write the mask to a byte of extended NVRAM and some ill permutations
+		 *  of it to other bytes of extended NVRAM and standard NVRAM.
+		 */
+		nvram_write_immediate(0xff, mask);
+		nvram_write_immediate(0x7f, (0xa5-mask));
+		nvram_write_immediate(0xfe, (0x5a-mask));
+
+		/* Check if the byte could be written. */
+		if (nvram_read(0xff) != mask) {
+			/* No. Probing failed. */
+			goto nvram_probe_end;
+		}
+		
+		/* Check if the byte was mirrored to standard NVRAM. */
+		if (nvram_read(0x7f) == mask) {
+			/* Yes. Probing failed. */
+			goto nvram_probe_end;
+		}
+
+		/* Check if the byte was mirrored inside the extended NVRAM. */
+		if (nvram_read(0xfe) == mask) {
+			/* Yes. Probing failed. */
+			goto nvram_probe_end;
+		}
+	}
+
+	/* Success. */
+	result=1;
+
+nvram_probe_end:
+	/* Restore original NVRAM contents. */
+	nvram_write_immediate(0x7f, nvram_cell_0x7f);
+	nvram_write_immediate(0xfe, nvram_cell_0xfe);
+	nvram_write_immediate(0xff, nvram_cell_0xff);
+
+	/* Close nvram. */
+	nvram_close();
+
+
+	/* Open NVRAM with standard type. */
+	nvram_open_internal(HARDWARE_TYPE_STANDARD);
+
+	/* Restore postion 0x50 and 0x53 of standard NVRAM contents. */
+	nvram_write_immediate(0x50, nvram_cell_0x50);
+	nvram_write_immediate(0x53, nvram_cell_0x53);
+
+	/* Close standard NVRAM. */
+	nvram_close();
+
+
+	return result;
+}
+
+
+/* Detect NVRAM type. */
+int nvram_detect(void)
+{
+	/* Probe for certain NVRAM types. */
+	if (nvram_probe(HARDWARE_TYPE_INTEL))    return HARDWARE_TYPE_INTEL;
+	if (nvram_probe(HARDWARE_TYPE_VIA82Cxx)) return HARDWARE_TYPE_VIA82Cxx;
+	if (nvram_probe(HARDWARE_TYPE_VIA823x))  return HARDWARE_TYPE_VIA823x;
+	if (nvram_probe(HARDWARE_TYPE_DS1685))   return HARDWARE_TYPE_DS1685;
+
+	/* No match. Only standard NVRAM is available. */
+	return HARDWARE_TYPE_STANDARD;
 }
 

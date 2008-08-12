@@ -44,6 +44,7 @@ extern wchar_t *checksum_algorithms[];
 const wchar_t USAGE[] = L"USAGE: nvram [OPTIONS] <COMMAND> [PARAMETERS]\n"
 "OPTIONS are\n"
 "  --no-checksum-update (-c) -- NVRAM checksums will not be updated automatically\n"
+"  --print0             (-0) -- separate output data with \\0 instead of \\n\n"
 "  --raw-dmi                 -- don't \"cook\" data in DMI fields before using\n"
 "  --dry-run            (-d) -- no changes are actually written to NVRAM\n"
 "  --verbose            (-v) -- raise log level so informational messages are printed\n"
@@ -213,10 +214,13 @@ void command_list(settings_t *settings, struct list_head *mapping_list)
 
 			case MAP_FIELD_TYPE_STRING:
 				/* Print string field. */
-				fwprintf(stdout, L"string %ls 0x%02x %d\n",
-					map_field->name,
-					map_field->data.string.position,
-					map_field->data.string.length);
+				fwprintf(stdout, L"string %ls ",
+					map_field->name);
+				for (i=0; i < map_field->data.string.length; i++) {
+					fwprintf(stdout, L"0x%02x ",
+						map_field->data.string.position[i]);
+				}
+				fwprintf(stdout, L"\n");
 				break;
 
 			case MAP_FIELD_TYPE_BITFIELD:
@@ -229,6 +233,17 @@ void command_list(settings_t *settings, struct list_head *mapping_list)
 				}
 				for (i=0; i < (1<<map_field->data.bitfield.length); i++) {
 					fwprintf(stdout, L"%ls ", map_field->data.bitfield.values[i]);
+				}
+				fwprintf(stdout, L"\n");
+				break;
+
+			case MAP_FIELD_TYPE_BYTES:
+				/* Print string field. */
+				fwprintf(stdout, L"bytes %ls ",
+					map_field->name);
+				for (i=0; i < map_field->data.bytes.length; i++) {
+					fwprintf(stdout, L"0x%02x ",
+						map_field->data.bytes.position[i]);
 				}
 				fwprintf(stdout, L"\n");
 				break;
@@ -276,7 +291,11 @@ void command_get(settings_t *settings, struct list_head *mapping_list)
 						for (i=map_field->data.checksum.size; i > 0; i--) {
 							fwprintf(stdout, L"%02x",nvram_read(map_field->data.checksum.position[i-1]));
 						}
-						fwprintf(stdout, L"\n");
+						if (settings->print0) {
+							fputwc(L'\0', stdout);
+						} else {
+							fwprintf(stdout, L"\n");
+						}
 						break;
 
 					case MAP_FIELD_TYPE_BYTEARRAY:
@@ -286,7 +305,12 @@ void command_get(settings_t *settings, struct list_head *mapping_list)
 							if (i < map_field->data.bytearray.length-1) {
 								fwprintf(stdout, L"%02x ", nvram_data);
 							} else {
-								fwprintf(stdout, L"%02x\n", nvram_data);
+								fwprintf(stdout, L"%02x", nvram_data);
+								if (settings->print0) {
+									fputwc(L'\0', stdout);
+								} else {
+									fwprintf(stdout, L"\n");
+								}
 							}
 						}
 						break;
@@ -294,13 +318,18 @@ void command_get(settings_t *settings, struct list_head *mapping_list)
 					case MAP_FIELD_TYPE_STRING:
 						/* Print string data. */
 						for (i=0; i < map_field->data.string.length; i++) {
-							nvram_data=nvram_read(map_field->data.string.position+i);
+							nvram_data=nvram_read(map_field->data.string.position[i]);
 							if (nvram_data != 0) {
 								fwprintf(stdout, L"%c", nvram_data);
 							} else break;
 						}
-						fwprintf(stdout, L"\n");
+						if (settings->print0) {
+							fputwc(L'\0', stdout);
+						} else {
+							fwprintf(stdout, L"\n");
+						}
 						break;
+
 					case MAP_FIELD_TYPE_BITFIELD:
 						/* Print bitfield data. */
 						bitfield_data=0;
@@ -308,7 +337,29 @@ void command_get(settings_t *settings, struct list_head *mapping_list)
 							nvram_data=nvram_read(map_field->data.bitfield.position[i].byte);
 							bitfield_data|=(nvram_data & (1<<map_field->data.bitfield.position[i].bit))?(1<<i):0;
 						}
-						fwprintf(stdout, L"%ls\n", map_field->data.bitfield.values[bitfield_data]);
+						fwprintf(stdout, L"%ls", map_field->data.bitfield.values[bitfield_data]);
+						if (settings->print0) {
+							fputwc(L'\0', stdout);
+						} else {
+							fwprintf(stdout, L"\n");
+						}
+						break;
+
+					case MAP_FIELD_TYPE_BYTES:
+						/* Print bytes data. */
+						for (i=0; i < map_field->data.bytes.length; i++) {
+							nvram_data=nvram_read(map_field->data.bytes.position[i]);
+							if (i < map_field->data.bytes.length-1) {
+								fwprintf(stdout, L"%02x ", nvram_data);
+							} else {
+								fwprintf(stdout, L"%02x", nvram_data);
+								if (settings->print0) {
+									fputwc(L'\0', stdout);
+								} else {
+									fwprintf(stdout, L"\n");
+								}
+							}
+						}
 						break;
 
 					default:
@@ -338,7 +389,7 @@ void command_set(settings_t *settings, struct list_head *mapping_list)
 	map_field_t      *map_field;
 	unsigned int      argcnt=1;
 	unsigned int      i, found, checksum;
-	unsigned char    *nvram_bytearray;
+	unsigned char     nvram_bytearray[NVRAM_SIZE];
 	unsigned char     nvram_data;
 	unsigned int      bitfield_data;
 
@@ -382,7 +433,6 @@ void command_set(settings_t *settings, struct list_head *mapping_list)
 						}
 
 						/* Write bytearray to NVRAM. */
-						nvram_bytearray=malloc(map_field->data.bytearray.length);
 						if (convert_bytearray(nvram_bytearray, settings->argv[argcnt], map_field->data.bytearray.length) != NULL) {
 							/* Ok. Now write in into nvram. */
 							for (i=0; i < map_field->data.bytearray.length; i++) {
@@ -393,7 +443,6 @@ void command_set(settings_t *settings, struct list_head *mapping_list)
 							fwprintf(stderr, L"nvram: invalid value for field %ls on command line.\n", map_field->name);
 							exit(EXIT_FAILURE);
 						}
-						free(nvram_bytearray);
 						break;
 
 					case MAP_FIELD_TYPE_STRING:
@@ -412,14 +461,14 @@ void command_set(settings_t *settings, struct list_head *mapping_list)
 						}	else if (strlen(settings->argv[argcnt]) == map_field->data.string.length) {
 							/* String is equal the field length. */
 							for (i=0; i < map_field->data.string.length; i++) {
-								nvram_write(map_field->data.string.position+i, settings->argv[argcnt][i]);
+								nvram_write(map_field->data.string.position[i], settings->argv[argcnt][i]);
 							}	
 						} else {
 							/* String is shorter than the field length. */
 							for (i=0; i < strlen(settings->argv[argcnt]); i++) {
-								nvram_write(map_field->data.string.position+i, settings->argv[argcnt][i]);
+								nvram_write(map_field->data.string.position[i], settings->argv[argcnt][i]);
 							}
-							nvram_write(map_field->data.string.position+i, 0);
+							nvram_write(map_field->data.string.position[i], 0);
 						}
 						break;
 
@@ -451,6 +500,27 @@ void command_set(settings_t *settings, struct list_head *mapping_list)
 							}
 						} else {
 							/* Not found. Ignore. */
+							fwprintf(stderr, L"nvram: invalid value for field %ls on command line.\n", map_field->name);
+							exit(EXIT_FAILURE);
+						}
+						break;
+
+					case MAP_FIELD_TYPE_BYTES:
+						/* Found the identifier. Get data from command line. */
+						argcnt++;
+						if (argcnt >= settings->argc) {
+							fwprintf(stderr, L"nvram: value for field %ls missing on command line.\n",  map_field->name);
+							exit(EXIT_FAILURE);
+						}
+
+						/* Write bytes to NVRAM. */
+						if (convert_bytearray(nvram_bytearray, settings->argv[argcnt], map_field->data.bytes.length) != NULL) {
+							/* Ok. Now write in into nvram. */
+							for (i=0; i < map_field->data.bytes.length; i++) {
+								nvram_write(map_field->data.bytes.position[i], nvram_bytearray[i]);
+							}
+						} else {
+							/* Not ok. */
 							fwprintf(stderr, L"nvram: invalid value for field %ls on command line.\n", map_field->name);
 							exit(EXIT_FAILURE);
 						}
@@ -514,6 +584,7 @@ int main(int argc, char *argv[])
 		{"dry-run", 0, 0, 'd'},
 		{"help", 0, 0, '?'},
 		{"no-checksum-update", 0, 0, 'c'},
+		{"print0", 0, 0, '0'},
 		{"quiet", 0, 0, 'q'},
 		{"raw-dmi", 0, 0, 'R'},
 		{"verbose", 0, 0, 'v'},
@@ -526,14 +597,15 @@ int main(int argc, char *argv[])
 	settings.update_checksums=1;
 	settings.write_to_nvram=1;
 	settings.dmi_raw=0;
+	settings.print0=0;
 
 	/* Lock the nvram utility against multiple invocation. */
-	if ((nvram_fd=open(argv[0], O_RDONLY)) == -1) {
-		perror("main, open nvram_util");
+	if ((nvram_fd=open("/proc/self/exe", O_RDONLY)) == -1) {
+		perror("nvram: cannot lock against multiple invocation");
 		exit(EXIT_FAILURE);
 	}
 	if (flock(nvram_fd, LOCK_EX) == -1) {
-		perror("main, flock nvram_util");
+		perror("nvram: cannot lock against multiple invocation");
 		exit(EXIT_FAILURE);
 	}
 
@@ -544,7 +616,11 @@ int main(int argc, char *argv[])
 
 	/* Parse command line options. */
 	for (;;) {
-		switch (getopt_long(argc, argv, "cdvq", long_options, &option_index)) {
+		switch (getopt_long(argc, argv, "0cdvq", long_options, &option_index)) {
+			case '0':
+				settings.print0=1;
+				break;
+
 			case 'c':
 				settings.update_checksums=0;
 				break;
@@ -610,12 +686,20 @@ endopt:
 
 	/* Switch by command. */
 	if (strcmp(settings.argv[0], "probe") == 0) {
-		/* DMI command. */
+		/* Probe command. */
 
 		/* Print DMI fields. */
 		fwprintf(stdout, L"BIOS vendor: '%s'\nBIOS version: '%s'\nBIOS release date: '%s'\n", hardware_description.bios_vendor, hardware_description.bios_version, hardware_description.bios_release_date);
 		fwprintf(stdout, L"System manufacturer: '%s'\nSystem productcode: '%s'\nSystem version: '%s'\n", hardware_description.system_manufacturer, hardware_description.system_productcode, hardware_description.system_version);
 		fwprintf(stdout, L"Board manufacturer: '%s'\nBoard productcode: '%s'\nBoard version: '%s'\n", hardware_description.board_manufacturer, hardware_description.board_productcode, hardware_description.board_version);
+
+		/* Detect NVRAM type. */
+		fwprintf(stdout, L"NVRAM autodetection: ");
+		if (nvram_probe(HARDWARE_TYPE_INTEL))    fwprintf(stdout, L"intel ");
+		if (nvram_probe(HARDWARE_TYPE_VIA82Cxx)) fwprintf(stdout, L"via82cxx ");
+		if (nvram_probe(HARDWARE_TYPE_VIA823x))  fwprintf(stdout, L"via823x ");
+		if (nvram_probe(HARDWARE_TYPE_DS1685))   fwprintf(stdout, L"ds1685 ");
+		fwprintf(stdout, L"\n");
 
 		/* Read first 128 bytes of NVRAM. */
 		/* Open NVRAM. */
@@ -716,6 +800,11 @@ endopt:
 
 	}	else if (strcmp(settings.argv[0], "check") == 0) {
 		/* Check command. */
+		/* Print autodection message only if verbose. */
+		if ((hardware_description.type == HARDWARE_TYPE_DETECT) && (settings.loglevel <= LOGLEVEL_INFO)) {
+			fwprintf(stderr, L"nvram: NVRAM hardware is being autodetected.\n");
+		}
+
 		/* Open NVRAM. */
 		if (nvram_open(hardware_description.type) == -1) {
 			perror("nvram_open");
@@ -743,6 +832,11 @@ endopt:
 			exit(EXIT_FAILURE);
 		}
 
+		/* Print autodection message only if verbose. */
+		if ((hardware_description.type == HARDWARE_TYPE_DETECT) && (settings.loglevel <= LOGLEVEL_INFO)) {
+			fwprintf(stderr, L"nvram: NVRAM hardware is being autodetected.\n");
+		}
+
 		/* Open NVRAM. */
 		if (nvram_open(hardware_description.type) == -1) {
 			perror("nvram_open");
@@ -759,6 +853,11 @@ endopt:
 		if (settings.argc < 3) {
 			fwprintf(stderr, USAGE);
 			exit(EXIT_FAILURE);
+		}
+
+		/* Print autodection message only if verbose. */
+		if ((hardware_description.type == HARDWARE_TYPE_DETECT) && (settings.loglevel <= LOGLEVEL_INFO)) {
+			fwprintf(stderr, L"nvram: NVRAM hardware is being autodetected.\n");
 		}
 
 		/* Open NVRAM. */

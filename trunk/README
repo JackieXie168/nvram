@@ -224,9 +224,10 @@ where no further NVRAM exists, and writes are a no-op in such regions. So an
 entry which seems to work may be broken. Take care of this when editing the
 NVRAM configuration!
 
-There are currently three directives for field types:
+There are currently four directives for field types:
     * bytearray IDENTIFIER POSITION FIELD_SIZE
-    * string    IDENTIFIER POSITION FIELD_SIZE
+    * bytes     IDENTIFIER [POSITION] ...
+    * string    IDENTIFIER [POSITION] ...
     * bitfield  IDENTIFIER n POSITION_0 .. POSITION_(n-1) VALUE_0 .. VALUE_(2^n)-1
 
 
@@ -234,12 +235,24 @@ Bytearrays:
 ~~~~~~~~~~~
 Bytearrays are a fixed number of bytes and are printed as non-prefixed hex
 bytes by default. On set operation, the exact number of bytes in the same
-format must be supplied as the value.
+format must be supplied as the value. Bytearrays are convenient for having an
+"overlay" field matching a group of data or the whole NVRAM.
 
 EXAMPLE: Define a byte array of 50 bytes named "atbios_data" starting
          at address 14.
 
     bytearray atbios_data 0x0E 50
+
+
+Bytes:
+~~~~~~
+"Bytes" type fields are a list of positions where a fixed number of bytes are
+located.  The get and set behaviour is the same as with bytefields, but the
+field positions do not have to be adjacent, as they need to be with bytefields.
+
+EXAMPLE: Define a field of "bytes" located at 0x80, 0x83, 0x79, in that order.
+
+    bytes TEST_BYTES 0x80 0x83 0x79
 
 
 Strings:
@@ -251,7 +264,9 @@ On set operation, the string may be at most the size of the field. A \0 is
 appended automatically, aside from the case where the field is completely
 filled -- then there is no \0 neccessary and thus, not written.
 The field size is fixed in the configuration and *not* dependend of the
-field contents.
+field contents. The string's characters are stored in an arbitrary list of
+bytes, in the order the are noted in the configuration. This way, unused
+bytes in the CMOS can be used as a string storage.
 
 *** NOTES:
 
@@ -260,10 +275,10 @@ field contents.
     * If the system encoding is changed, string fields may produce nonsense
       on output. Use the "iconv" utility to fix that.
 
-EXAMPLE: Define a string field of maximum 4 bytes named "TEST_S" starting
-         at address 128.
+EXAMPLE: Define a string field of maximum 4 bytes named "TEST_S" at
+         adresses 130, 128, 129, 135, in that order.
 
-    string TEST_S 0x80 4
+    string TEST_S 130 128 129 135 
 
 
 Bitfields:
@@ -360,6 +375,7 @@ The NVRAM type is set with the directive
     * hardware HARDWARE_NAME
 
 HARDWARE_NAME may be
+    * detect     (try to guess the NVRAM chip, default)
     * standard   (for any compatible RTC -- only 64/128 bytes NVRAM!)
     * intel      (for Intel ICHx southbridge series, 256 Byte)
     * via82cxx   (for VIA 82Cxx ISA bridge series, 256 Byte)
@@ -412,11 +428,13 @@ The OPTIONS are
     checksum!) in the NVRAM is written. With this option set, no checksum
     updates are made.
 
-    -d
+
+  -d
   --dry-run
     
     This option performs a dry run, meaning, all operations but the actual
     write operation to the NVRAM are done.
+
 
   --raw-dmi
 
@@ -433,6 +451,15 @@ The OPTIONS are
     the / by the % character and trim leading and trailing spaces from DMI
     strings before using them.
 
+
+	-0
+	--print0
+
+    Split "get" command results with \0 instead of \n. Useful when handling
+		string fields that contain \n as a normal character. The "set" command is
+		not affected as it reads it's data from the command line.
+
+
   -v
   --verbose
   --debug
@@ -444,9 +471,11 @@ The OPTIONS are
     suppressed in case of -q and --quiet). Error messages are printed in any
     case. To supress error messages, redirect stderr to /dev/null.
 
+
   --help
 
     Shows a help message and exit
+
 
   --version
 
@@ -471,12 +500,13 @@ The COMMAND must be one of
     
     This command prints the contents of the specified NVRAM fields to stdout.
     Multiple values are separated by line end (\n), so be careful when printing
-    string fields. If the output may contain line ends, only one IDENTIFIER
-    should be specified.
+    string fields. If the output may contain line ends, either only one
+		IDENTIFIER should be specified or you should use the --print0 option,
+		which advises "get" to print \0 as a separator instead of \n.
         
     The output format is set up in the configuration. More than one output
     format may be specified for a region in the NVRAM. Then often, alternate
-    field names with suffixes like _S (for "string" in contrast to bytearray)
+    field names with suffixes like _S (for "string" in contrast to bytes)
     are used.
 
   set [IDENTIFIER VALUE] [IDENTIFIER VALUE]...
@@ -491,6 +521,54 @@ The COMMAND must be one of
     Checksums in the NVRAM are calculated automatically unless the -c (or
     --no-checksum-update) option is given. The latter is neccessary if you
         want to set the checksum by hand.
+
+
+
+FAQ
+===
+
+The nvram utility is always complaining missing hardware descriptions! How come?
+--------------------------------------------------------------------------------
+I think you mean the following warnings:
+
+	nvram: have not found any hardware description matching the installed motherboard.
+	nvram: have not found any hardware description matching the BIOS.
+
+This should be (at least now) normal. The nvram utility looks into the BIOS'
+DMI records to find out which BIOS/mainboard your computer has. This
+information is crucial to find out the correct hardware driver for your NVRAM
+(there are four so far). To our misfortune, board vendors change the hardware
+frequently, so do BIOS vendors with their software. But you may just do
+
+ # nvram probe
+
+and look by yourself which extended NVRAM type your computer supports. It's
+likely one or two of the shown fields have arbitrary data, in contrast to
+"all zero" or "all the same" fields. You may put a "hardware intel" or similar
+directive into /etc/nvram.conf and comment out the "log" directive showing the
+warnings there.
+
+
+How do I save/restore the whole NVRAM contents?
+-----------------------------------------------
+There is no special command to do this; but there's a field "nvram" in the
+standard configuration files which is same as useful. To save the whole NVRAM
+contents (aside from the time/date of the clock), do
+
+	# nvram get nvram >nvram.saved
+
+To restore the whole contents, do
+
+(in bash and zsh)
+	# nvram -c set nvram "$(<nvram.saved)"
+
+(in sh and ksh)
+	# nvram -c set nvram "`cat nvram.saved`"
+
+The "-c" option disables checksum calculation, so the saved contents is
+restored into the NVRAM in verbatim. Please notice that is is very unlikely
+that the saved NVRAM contents is useful for any other computer than the one
+it was being saved on.
 
 
 *** END OF README
