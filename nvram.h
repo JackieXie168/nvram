@@ -24,11 +24,13 @@
 #define NVRAM_SIZE 256
 
 /* Hardware types. */
-#define HARDWARE_TYPE_STANDARD 0
-#define HARDWARE_TYPE_INTEL    1
-#define HARDWARE_TYPE_VIA82Cxx 2
-#define HARDWARE_TYPE_VIA823x  3
-#define HARDWARE_TYPE_DS1685   4
+#define HARDWARE_TYPE_DETECT   0
+#define HARDWARE_TYPE_STANDARD 1
+#define HARDWARE_TYPE_INTEL    2
+#define HARDWARE_TYPE_VIA82Cxx 3
+#define HARDWARE_TYPE_VIA823x  4
+#define HARDWARE_TYPE_DS1685   5
+
 
 /* Hardware structure. */
 typedef struct {
@@ -52,6 +54,7 @@ typedef struct {
 	char   loglevel;
 	char   update_checksums;
 	char   write_to_nvram;
+	char   print0;
 } settings_t;
 
 #endif

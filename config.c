@@ -21,6 +21,7 @@
 
 /* Recognized hardware descriptions. */
 wchar_t *hardware_types[] = {
+	L"detect",
 	L"standard",
 	L"intel",
 	L"via82cxx",
@@ -60,6 +61,7 @@ wchar_t *commands[] = {
 	L"bytearray",
 	L"string",
 	L"bitfield",
+	L"bytes",
 	(wchar_t *)NULL };
 
 #define COMMAND_KEYWORD_BLOCK_START  0
@@ -76,6 +78,7 @@ wchar_t *commands[] = {
 #define COMMAND_KEYWORD_BYTEARRAY   11
 #define COMMAND_KEYWORD_STRING      12
 #define COMMAND_KEYWORD_BITFIELD    13
+#define COMMAND_KEYWORD_BYTES       14
 
 
 #define NEXT_TOKEN \
@@ -477,6 +480,7 @@ void read_config(settings_t *settings, struct list_head *token_list, hardware_t 
 				/* Next token is a hardware description. */
 				NEXT_TOKEN
 				switch (token_convert_keyword(token, hardware_types)) {
+					case HARDWARE_TYPE_DETECT:
 					case HARDWARE_TYPE_STANDARD:
 					case HARDWARE_TYPE_INTEL:
 					case HARDWARE_TYPE_VIA82Cxx:
@@ -503,6 +507,7 @@ void read_config(settings_t *settings, struct list_head *token_list, hardware_t 
 			case COMMAND_KEYWORD_BYTEARRAY:
 			case COMMAND_KEYWORD_STRING:
 			case COMMAND_KEYWORD_BITFIELD:
+			case COMMAND_KEYWORD_BYTES:
 				/* Next token is an identifier. */
 				NEXT_TOKEN
 				NOT_EOL_TOKEN
@@ -619,16 +624,6 @@ void read_config(settings_t *settings, struct list_head *token_list, hardware_t 
 						break;
 
 					case COMMAND_KEYWORD_STRING:
-						/* Next token is the integer position. */
-						NEXT_TOKEN
-						INTEGER_TOKEN
-						position=token->data.integer_number;
-
-						/* Next token is the integer length. */
-						NEXT_TOKEN
-						INTEGER_TOKEN
-						length=token->data.integer_number;
-
 						/* Create new mapping entry for the token. */
 						if ((map_field=map_field_new()) == NULL) {
 							perror("read_config, map_field_new");
@@ -636,15 +631,25 @@ void read_config(settings_t *settings, struct list_head *token_list, hardware_t 
 						}
 						map_field->type=MAP_FIELD_TYPE_STRING;
 						map_field->name=identifier;
-						map_field->data.string.position=position;
-						map_field->data.string.length=length;
 
-						/* Add it up to the NVRAM mapping list. */
-						list_add_tail(&map_field->list, nvram_mapping);
-
-						/* Next token is the line end. */
+						/* Go though all tokens until line ends. */
 						NEXT_TOKEN
-						EOL_TOKEN
+						i=0;
+						while (token->type != TOKEN_TYPE_EOL) {
+							/* Next token is the integer position. */
+							INTEGER_TOKEN
+							map_field->data.string.position[i]=token->data.integer_number;
+							i++;
+
+							/* Next token is either the line end or another position */ 
+							NEXT_TOKEN
+						}	
+
+						/* Set length. */
+						map_field->data.string.length=i;
+
+						/* Add the field up to the NVRAM mapping list. */
+						list_add_tail(&map_field->list, nvram_mapping);
 
 						/* Command succeded. */
 						STATUS_SUCCESS
@@ -703,6 +708,38 @@ void read_config(settings_t *settings, struct list_head *token_list, hardware_t 
 						/* Next token is the line end. */
 						NEXT_TOKEN
 						EOL_TOKEN
+
+						/* Command succeded. */
+						STATUS_SUCCESS
+						break;
+
+					case COMMAND_KEYWORD_BYTES:
+						/* Create new mapping entry for the token. */
+						if ((map_field=map_field_new()) == NULL) {
+							perror("read_config, map_field_new");
+							exit(EXIT_FAILURE);
+						}
+						map_field->type=MAP_FIELD_TYPE_BYTES;
+						map_field->name=identifier;
+
+						/* Go though all tokens until line ends. */
+						NEXT_TOKEN
+						i=0;
+						while (token->type != TOKEN_TYPE_EOL) {
+							/* Next token is the integer position. */
+							INTEGER_TOKEN
+							map_field->data.bytes.position[i]=token->data.integer_number;
+							i++;
+
+							/* Next token is either the line end or another position */ 
+							NEXT_TOKEN
+						}	
+
+						/* Set length. */
+						map_field->data.bytes.length=i;
+
+						/* Add the field up to the NVRAM mapping list. */
+						list_add_tail(&map_field->list, nvram_mapping);
 
 						/* Command succeded. */
 						STATUS_SUCCESS

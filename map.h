@@ -2,6 +2,7 @@
 #define MAP_H
 
 #include "list.h"
+#include "nvram.h"
 
 
 /* Maximum number of values per bitfield. */
@@ -16,6 +17,7 @@
 #define MAP_FIELD_TYPE_BYTEARRAY 2
 #define MAP_FIELD_TYPE_STRING    3
 #define MAP_FIELD_TYPE_BITFIELD  4
+#define MAP_FIELD_TYPE_BYTES     5
 
 typedef struct {
 	struct list_head  list;
@@ -34,7 +36,7 @@ typedef struct {
 			unsigned int length;
 		} bytearray;
 		struct {
-			unsigned int position;
+			unsigned int position[NVRAM_SIZE];
 			unsigned int length;
 		} string;
 		struct {
@@ -45,6 +47,10 @@ typedef struct {
 			} position[MAP_BITFIELD_MAX_BITS];
 			wchar_t *values[1<<MAP_BITFIELD_MAX_BITS];
 		} bitfield;
+		struct {
+			unsigned int position[NVRAM_SIZE];
+			unsigned int length;
+		} bytes;
 	} data;	
 } map_field_t;
 
