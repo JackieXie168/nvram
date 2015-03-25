@@ -1,0 +1,37 @@
+# Object files
+*.o
+*.ko
+*.obj
+*.elf
+
+# Libraries
+*.lib
+*.a
+
+# Shared objects (inc. Windows DLLs)
+*.dll
+*.so
+*.so.*
+*.dylib
+
+# Executables
+*.com
+*.class
+*.exe
+*.out
+*.app
+*.i*86
+*.x86_64
+*.hex
+*.pyc
+
+# Others
+.DS_Store*
+.*~
+*~
+*.swp
+*.swo
+log/*.log
+Icon?
+Thumbs.db
+ehthumbs.db
